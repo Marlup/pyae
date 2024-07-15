@@ -1,0 +1,16 @@
+pandas
+matplotlib
+plotly
+scikit-learn
+statsmodels
+torch
+openpyxl
+numpy
+h5py
+xarray[complete]
+ipython
+kaleido
+netcdf4
+ffmpeg
+torchsummary
+torchmetrics
