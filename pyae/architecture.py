@@ -407,7 +407,7 @@ class ConvEncoder(AutoencoderLayerBuilder):
     through convolutional layers with customizable specifications.
     """
 
-    def __init__(self, input_length: int, input_channel: int, layer_specifications: list, on_global_pool=True, **kwargs):
+    def __init__(self, input_length: int, input_channel: int, layer_specifications: list, on_global_pool=True):
         """
         Parameters:
             input_length (int): The length of the input data.
@@ -448,9 +448,8 @@ class ConvDecoder(AutoencoderLayerBuilder):
     Args:
         input_channel (int): Number of input channels.
         layer_specs (list): List of specifications for each layer.
-        **kwargs: Additional keyword arguments.
     """
-    def __init__(self, input_channel, layer_specs: list, **kwargs):
+    def __init__(self, input_channel, layer_specs: list):
         if not isinstance(layer_specs, list):
             raise ValueError("Input error. 'layer_specs' should be a list")
         
@@ -474,8 +473,8 @@ class ConvAutoencoderImplicit(AutoencoderLayerBuilder):
         input_channel: int, 
         encoder_specs: list, 
         decoder_specs: list,
-        n_categories=0,
-        **kwargs
+        on_global_pool=False,
+        n_categories=0
     ):
         super(ConvAutoencoderImplicit, self).__init__()
         
@@ -487,7 +486,7 @@ class ConvAutoencoderImplicit(AutoencoderLayerBuilder):
         self.n_categories = n_categories
         
         # Encoder
-        self.encoder = ConvEncoder(input_length, input_channel, encoder_specs, **kwargs)
+        self.encoder = ConvEncoder(input_length, input_channel, encoder_specs, on_global_pool=on_global_pool)
         
         # Encoder output length: number_channels * length_last_conv_output
         latent_input_length = self.encoder.last_input_channel * self.get_encoder_output_length([1, input_channel, input_length])
@@ -499,7 +498,7 @@ class ConvAutoencoderImplicit(AutoencoderLayerBuilder):
             self.category_encoder = CategoricalEncoder(n_categories, latent_input_length)
         
         # Decoder
-        self.decoder = ConvDecoder(self.latent_output_channel, decoder_specs, **kwargs)
+        self.decoder = ConvDecoder(self.latent_output_channel, decoder_specs)
     
     def forward(self, x, x_category=None):
         x = self.encoder(x)
@@ -527,8 +526,7 @@ class ConvAutoencoderLatentFC1(AutoencoderLayerBuilder):
         latent_specs: list,
         decoder_specs: list,
         n_categories=0,
-        pad=0,
-        **kwargs
+        pad=0
     ):
         super(ConvAutoencoderLatentFC1, self).__init__()
         
@@ -542,13 +540,13 @@ class ConvAutoencoderLatentFC1(AutoencoderLayerBuilder):
         self.pad = pad
         
         # Encoder
-        self.encoder = ConvEncoder(input_length, input_channel, encoder_specs, **kwargs)
+        self.encoder = ConvEncoder(input_length, input_channel, encoder_specs)
         
         # Encoder output length: number_channels * length_last_conv_output
         latent_input_length = self.encoder.last_input_channel * self.get_encoder_output_length([1, input_channel, input_length])
         
         # Latent layer
-        self.latent = LatentFC1(latent_input_length, latent_length, latent_specs, pad=pad, **kwargs)
+        self.latent = LatentFC1(latent_input_length, latent_length, latent_specs, pad=pad)
         
         # Category encoding for optional inputs
         if self.n_categories > 0:
@@ -557,7 +555,7 @@ class ConvAutoencoderLatentFC1(AutoencoderLayerBuilder):
             self.category_encoder = CategoricalEncoder(n_categories, latent_length)
         
         # Decoder
-        self.decoder = ConvDecoder(self.latent_output_channel, decoder_specs, **kwargs)
+        self.decoder = ConvDecoder(self.latent_output_channel, decoder_specs)
     
     def forward(self, x, x_category=None):
         x = self.encoder(x)
@@ -582,14 +580,13 @@ class VariationalLatent(AutoencoderLayerBuilder):
     the mean and log-variance of a latent space in a variational autoencoder (VAE).
     """
 
-    def __init__(self, input_length, latent_length, layer_specifications, **kwargs):
+    def __init__(self, input_length, latent_length, layer_specifications):
         """
         Parameters:
             input_length (int): The size of the input data.
             latent_length (int): The size of the latent space.
             layer_specifications (tuple): Specifications for the layers, including activation function,
                                  bias, and whether batch normalization is applied.
-            **kwargs: Additional keyword arguments.
         """
         super(VariationalLatent, self).__init__()
 
@@ -656,8 +653,7 @@ class LatentFC1(AutoencoderLayerBuilder):
                  layer_specifications,
                  on_conv_ae=True, 
                  pad=1,
-                 mode="replicate",
-                 **kwargs
+                 mode="replicate"
                 ):
         """
         Parameters:
@@ -665,7 +661,6 @@ class LatentFC1(AutoencoderLayerBuilder):
             latent_length (int): The size of the latent data.
             layer_specifications (list): Specifications for the layers, including activation function,
                                 bias, and whether batch normalization is applied.
-            **kwargs: Additional keyword arguments.
         """
         super(LatentFC1, self).__init__()
 
@@ -706,7 +701,6 @@ class LatentFC3(AutoencoderLayerBuilder):
                  input_channel, 
                  layer_specifications, 
                  on_conv_ae=True, 
-                 **kwargs
                 ):
         """
         Parameters:
@@ -715,7 +709,6 @@ class LatentFC3(AutoencoderLayerBuilder):
             input_channel (int): The number of input channels from the last encoder layer.
             layer_specifications (list): Specifications for the layers, including activation function,
                                 bias, and whether batch normalization is applied.
-            **kwargs: Additional keyword arguments.
         """
         super(LatentFC3, self).__init__()
 
@@ -753,14 +746,13 @@ class DCECLatentFC3(AutoencoderLayerBuilder):
     the latent space in an autoencoder for Deep Convolutional Embedded Clustering (DCEC).
     """
 
-    def __init__(self, input_length, input_channel, layer_specifications, **kwargs):
+    def __init__(self, input_length, input_channel, layer_specifications, on_conv_ae=True):
         """
         Parameters:
             input_length (int): The size of the input data.
             input_channel (int): The number of input channels from the last encoder layer.
             layer_specifications (list): Specifications for the layers, including activation function,
                                 bias, and whether batch normalization is applied.
-            **kwargs: Additional keyword arguments.
         """
         super(DCECLatentFC3, self).__init__()
 
@@ -772,7 +764,7 @@ class DCECLatentFC3(AutoencoderLayerBuilder):
         self.output_reshape = (-1, input_channel, input_length // input_channel)
         self.layers = nn.Sequential()
 
-        self.on_conv_ae = kwargs.get("on_conv_ae", True)
+        self.on_conv_ae = on_conv_ae
         
         encoder_to_latent_specifications = [self.input_length, *layer_specifications[0]]
         latent_specifications = layer_specifications[1]
@@ -802,14 +794,14 @@ class EnsembleLatentFC3(AutoencoderLayerBuilder):
     the latent space in an autoencoder.
     """
 
-    def __init__(self, latent_length, input_lengths, layer_specifications, increment_output_units=2, **kwargs):
+    def __init__(self, latent_length, input_lengths, layer_specifications, increment_output_units=2, on_conv_ae=True):
         """
         Parameters:
             latent_length (int): The sizes of the input data.
             input_lengths (int): The sizes of the input data.
             layer_specifications (list): Specifications for the layers, including activation function,
                                 bias, and whether batch normalization is applied.
-            **kwargs: Additional keyword arguments.
+            on_conv_ae (bool)
         """
         super(EnsembleLatentFC3, self).__init__()
         
@@ -824,7 +816,7 @@ class EnsembleLatentFC3(AutoencoderLayerBuilder):
         self.output_reshape = (-1, 1, latent_length)
         self.layers = nn.Sequential()
 
-        self.on_conv_ae = kwargs.get("on_conv_ae", True)
+        self.on_conv_ae = on_conv_ae
         
         # Encoders to concatenation block
         on_flatten_first = True
@@ -894,24 +886,22 @@ class ClusteringLayer(AutoencoderLayerBuilder):
     from the autoencoder latent layer.
     """
 
-    def __init__(self, n_clusters, features_length, **kwargs):
+    def __init__(self, n_clusters, features_length, pretrain_cluster_weights=None):
         """
         Parameters:
             n_clusters (int): The number of clusters.
             features_length (int): The size of the latent data.
-            **kwargs: Additional keyword arguments.
+            pretrain_cluster_weights ()
         """
         super(ClusteringLayer, self).__init__()
         
         # Encoder attributes
         self.features_length = features_length
         self.n_clusters = n_clusters
+        # Pretrain weights
+        self.pretrain_cluster_weights = pretrain_cluster_weights
         self.layers = nn.Sequential()
 
-
-        # Pretrain weights
-        pretrain_cluster_weights = kwargs.get("pretrain_cluster_weights", None)
-        
         # Initialize clustering weights
         self.initialize_weights(pretrain_cluster_weights)
 

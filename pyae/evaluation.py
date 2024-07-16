@@ -311,13 +311,8 @@ def get_classification_report(X, y, model):
     report = classification_report(y_true, y_pred)    
     return report
 
-def top_k_categories(y_pred, k=2):
-    top_k_values, top_k_indices = torch.topk(y_pred, k, dim=-1)
-    
-    return top_k_indices
-
 def get_top_k_categories(X, y, model, k=4):
     y_pred = model(X)
-    top_k_indices = top_k_categories(y_pred, k=k)
+    top_k_values, top_k_indices = torch.topk(y_pred, k, dim=-1)
     
     return top_k_indices

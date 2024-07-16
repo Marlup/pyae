@@ -232,7 +232,7 @@ class TrainingManager:
         self._train_model()
     
     def _train_model(self):
-        eval_loss = None
+        on_early_stopping = False
         for epoch in range(self.epochs):
             print(f"Epoch {epoch + 1}/{self.epochs}")
             print(40 * "-")
@@ -241,18 +241,19 @@ class TrainingManager:
             epoch_loss = self._train_epoch()
             self.train_losses.append(epoch_loss)
             
+            # Learning rate scheduler step
+            if self.lr_scheduler:
+                self.lr_scheduler.step()
+                
             # Evaluate one epoch
             if self.eval_loader:
                 eval_loss = self._eval_epoch()
                 self.eval_losses.append(eval_loss)
-            
-            # Learning rate scheduler step
-            if self.lr_scheduler:
-                self.lr_scheduler.step()
+                
+                on_early_stopping = self._early_stopping(eval_loss)
             
             # Check for early stopping
-            on_early_stopping = self._early_stopping(eval_loss)
-            if on_early_stopping and eval_loss is not None:
+            if on_early_stopping:
                 break
             
             self.prev_loss = epoch_loss
