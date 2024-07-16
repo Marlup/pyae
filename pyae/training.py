@@ -618,6 +618,7 @@ def evaluate_model(model, criterion, data_loader, mode="regular"):
     return avg_eval_loss
 
 def plot_losses(train_losses, eval_losses=None, **kwargs):
+    fig = plt.figure()
     y_lim = kwargs.get("y_lim", None)
     epochs = kwargs.get("epochs", None)
     lr = kwargs.get("lr", None)
@@ -640,6 +641,7 @@ def plot_losses(train_losses, eval_losses=None, **kwargs):
     plt.ylim(y_lim)
     plt.legend()
     plt.show()
+    return fig
 
 def run_experiment(
     path_experiment_specs, 
