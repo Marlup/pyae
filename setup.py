@@ -22,7 +22,7 @@ setup(
         "netcdf4",
         "ffmpeg",
         "torchinfo",
+	    "torchsummary",
         "torchmetrics",
-        "pytorch-forecasting"
     ],  # List dependencies here if any
 )

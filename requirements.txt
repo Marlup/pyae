@@ -13,4 +13,5 @@ kaleido
 netcdf4
 ffmpeg
 torchsummary
+torchinfo
 torchmetrics
