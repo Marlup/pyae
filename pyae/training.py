@@ -383,7 +383,7 @@ class TrainingManager:
         loss = self.criterion(outputs, target) 
         
         if return_outputs:
-            return loss, outputs
+            return loss.cpu(), outputs.cpu()
         return loss
         
     def _compute_batch_loss_stack(self, x, x_categories, target, return_outputs=False):
@@ -391,7 +391,7 @@ class TrainingManager:
         loss = self.criterion(outputs, target) 
         
         if return_outputs:
-            return loss, outputs
+            return loss.cpu(), outputs.cpu()
         return loss
         
     def _compute_batch_loss_vae(self, x, x_categories, target, return_outputs=False):
@@ -399,7 +399,7 @@ class TrainingManager:
         loss = self.criterion(outputs, target, mean, log_var)
         
         if return_outputs:
-            return loss, outputs
+            return loss.cpu(), outputs.cpu()
         return loss
 
     def _compute_batch_loss_dcec(self, x, x_categories, target, return_outputs=False):
@@ -411,7 +411,7 @@ class TrainingManager:
         loss = self.criterion(outputs, target, q_dist, self.p_target)
         
         if return_outputs:
-            return loss, outputs
+            return loss.cpu(), outputs.cpu()
         return loss
         
     def _compute_batch_classification(self, x, target, return_outputs=False):
@@ -420,7 +420,7 @@ class TrainingManager:
         loss = self.criterion(outputs, target)
         
         if return_outputs:
-            return loss, outputs
+            return loss.cpu(), outputs.cpu()
         return loss
     
     def evaluate_model(self):
