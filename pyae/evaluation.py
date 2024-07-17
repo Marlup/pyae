@@ -51,9 +51,9 @@ Current batch_size is {dataloader.batch_size}")
         
         # Squeeze target and reconstruction (prediction) into 1d-array
         deviation, reconstruction = training_manager._compute_batch_loss(x, x_categories, y, return_outputs=True)
-        deviation= deviation.item()
-        reconstruction = reconstruction.squeeze().detach()
-        y = y.squeeze().detach()
+        deviation = deviation.cpu().item()
+        reconstruction = reconstruction.cpu().detach().squeeze()
+        y = y.squeeze().cpu().detach()
         
         # Plot original and reconstructed signals
         axes[i].plot(y, label=f"Original", color="blue")
@@ -123,14 +123,14 @@ Current batch_size is {dataloader.batch_size}")
         # Squeeze target and reconstruction (prediction) into 1d-array; ## Compute losses
         deviation, reconstruction = training_manager._compute_batch_loss(x, x_categories, y, return_outputs=True)
         deviation = deviation.item()
-        reconstruction = reconstruction.detach().squeeze()
+        reconstruction = reconstruction.cpu().detach().squeeze()
         
         # Lower confidence interval band
         lower_recon = models_ci[0](x, *x_categories).detach()
-        lower_recon = lower_recon.detach().squeeze()
+        lower_recon = lower_recon.cpu().squeeze()
         # Upper confidence interval band
         upper_recon = models_ci[1](x, *x_categories).detach()
-        upper_recon = upper_recon.detach().squeeze()
+        upper_recon = upper_recon.cpu().squeeze()
         
         # Plot original and reconstruction signals with confidence intervals
         y = y.squeeze()
@@ -286,8 +286,8 @@ def get_loss_statistics(training_manager, dataloader, loss_func, on_vae=False):
 def get_confusion_matrix(X, y, model):
     from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
     
-    y_true = y.detach().numpy()
-    y_pred = model(X).detach().numpy().argmax(axis=1)
+    y_true = y.cpu().detach().numpy()
+    y_pred = model(X).cpu().detach().numpy().argmax(axis=1)
     
     print(confusion_matrix(y_true, y_pred))
     
@@ -296,8 +296,8 @@ def get_confusion_matrix(X, y, model):
 def get_top_k_accuracy(X, y, model, k=2):
     from sklearn.metrics import top_k_accuracy_score
     
-    y_true = y.detach().numpy()
-    y_pred = model(X).detach().numpy()
+    y_true = y.cpu().detach().numpy()
+    y_pred = model(X).cpu().detach().numpy()
 
     score = top_k_accuracy_score(y_true, y_pred, k=k)
     return score
@@ -305,14 +305,14 @@ def get_top_k_accuracy(X, y, model, k=2):
 def get_classification_report(X, y, model):
     from sklearn.metrics import classification_report
     
-    y_true = y.detach().numpy()
-    y_pred = model(X).detach().numpy().argmax(-1)
+    y_true = y.cpu().detach().numpy()
+    y_pred = model(X).cpu().detach().numpy().argmax(-1)
 
     report = classification_report(y_true, y_pred)    
     return report
 
-def get_top_k_categories(X, y, model, k=4):
+def get_top_k_categories(X, model, k=4):
     y_pred = model(X)
     top_k_values, top_k_indices = torch.topk(y_pred, k, dim=-1)
     
-    return top_k_indices
+    return top_k_indices.cpu()
