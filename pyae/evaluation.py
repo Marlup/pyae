@@ -47,7 +47,7 @@ Current batch_size is {dataloader.batch_size}")
         ## Setup data
         x, y = batch["x"], batch["y"]
         x_categories = batch.get("x_categories", None)
-        ids = tuple(batch["ids"])
+        ids = batch["ids"].numpy().tolist()
         
         # Squeeze target and reconstruction (prediction) into 1d-array
         deviation, reconstruction = training_manager._compute_batch_loss(x, x_categories, y, return_outputs=True)
@@ -59,7 +59,8 @@ Current batch_size is {dataloader.batch_size}")
         # Setup labels, title and embellishments
         title = f"Loss: {round(deviation.cpu().item(), digits)}"
         if ids:
-            title += f";\nSignal id {ids}"
+            ids_format = "load {}, sweep {}, sensor {}".format(*ids)
+            title += f";\nSignal id: {ids_format}"
         
         axes[i].set_title(title)
         axes[i].set_xlabel("Frequency")

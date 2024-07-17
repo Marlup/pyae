@@ -246,7 +246,7 @@ class TrainingManager:
                 self.lr_scheduler.step()
                 
             # Evaluate one epoch
-            if self.eval_loader:
+            if self.eval_loader is not None:
                 eval_loss = self._eval_epoch()
                 self.eval_losses.append(eval_loss)
                 
@@ -495,7 +495,7 @@ def train_model(
         epoch_loss = _train_epoch(model, train_loader, optimizer, criterion, mode, **kwargs)
         
         # Evaluate one epoch
-        if eval_loader:
+        if eval_loader is not None:
             model.eval()
             eval_loss = _eval_epoch(model, eval_loader, criterion, mode, **kwargs)
             eval_losses.append(eval_loss)
