@@ -51,16 +51,13 @@ Current batch_size is {dataloader.batch_size}")
         
         # Squeeze target and reconstruction (prediction) into 1d-array
         deviation, reconstruction = training_manager._compute_batch_loss(x, x_categories, y, return_outputs=True)
-        deviation = deviation.cpu().item()
-        reconstruction = reconstruction.squeeze().cpu().detach().numpy()
-        y = y.squeeze().cpu().detach().numpy()
         
         # Plot original and reconstructed signals
-        axes[i].plot(y, label=f"Original", color="blue")
-        axes[i].plot(reconstruction, label="Predicted", color="green")
+        axes[i].plot(y.cpu().detach().numpy().squeeze(), label=f"Original", color="blue")
+        axes[i].plot(reconstruction.cpu().detach().numpy().squeeze(), label="Predicted", color="green")
         
         # Setup labels, title and embellishments
-        title = f"Loss: {round(deviation, digits)}"
+        title = f"Loss: {round(deviation.cpu().item(), digits)}"
         if ids:
             title += f";\nSignal id {ids}"
         
