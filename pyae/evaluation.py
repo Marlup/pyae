@@ -282,31 +282,49 @@ def get_loss_statistics(training_manager, dataloader, loss_func, on_vae=False):
         "iqr": losses.quantile(0.75) - losses.quantile(0.25)
     }
 
-def get_confusion_matrix(X, y, model):
+def get_confusion_matrix(y, y_pred=None, X=None, model=None):
     from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
     
+    if y_pred is not None and (X is None and model is None):
+        on_model = False
+    else:
+        on_model = True
+    
     y_true = y.cpu().detach().numpy()
-    y_pred = model(X).cpu().detach().numpy().argmax(axis=1)
+    if on_model:
+        y_pred = model(X).cpu().detach().numpy().argmax(-1)
     
     conf_matrix = confusion_matrix(y_true, y_pred)
     
     return conf_matrix, ConfusionMatrixDisplay.from_predictions(y_true, y_pred)
 
-def get_top_k_accuracy(X, y, model, k=2):
+def get_top_k_accuracy(y, y_pred=None, X=None, model=None, k=2):
     from sklearn.metrics import top_k_accuracy_score
     
+    if y_pred is not None and (X is None and model is None):
+        on_model = False
+    else:
+        on_model = True
+    
     y_true = y.cpu().detach().numpy()
-    y_pred = model(X).cpu().detach().numpy()
+    if on_model:
+        y_pred = model(X).cpu().detach().numpy().argmax(-1)
 
     score = top_k_accuracy_score(y_true, y_pred, k=k)
     return score
 
-def get_classification_report(X, y, model):
+def get_classification_report(y, y_pred=None, X=None, model=None):
     from sklearn.metrics import classification_report
     
+    if y_pred is not None and (X is None and model is None):
+        on_model = False
+    else:
+        on_model = True
+    
     y_true = y.cpu().detach().numpy()
-    y_pred = model(X).cpu().detach().numpy().argmax(-1)
-
+    if on_model:
+        y_pred = model(X).cpu().detach().numpy().argmax(-1)
+        
     report = classification_report(y_true, y_pred)    
     return report
 
