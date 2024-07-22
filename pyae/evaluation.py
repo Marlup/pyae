@@ -288,9 +288,9 @@ def get_confusion_matrix(X, y, model):
     y_true = y.cpu().detach().numpy()
     y_pred = model(X).cpu().detach().numpy().argmax(axis=1)
     
-    print(confusion_matrix(y_true, y_pred))
+    conf_matrix = confusion_matrix(y_true, y_pred)
     
-    return ConfusionMatrixDisplay.from_predictions(y_true, y_pred)
+    return conf_matrix, ConfusionMatrixDisplay.from_predictions(y_true, y_pred)
 
 def get_top_k_accuracy(X, y, model, k=2):
     from sklearn.metrics import top_k_accuracy_score
@@ -310,8 +310,8 @@ def get_classification_report(X, y, model):
     report = classification_report(y_true, y_pred)    
     return report
 
-def get_top_k_categories(X, model, k=4):
+def get_top_k_categories(X, model, k=2):
     y_pred = model(X)
     top_k_values, top_k_indices = torch.topk(y_pred, k, dim=-1)
     
-    return top_k_indices.cpu()
+    return top_k_values.cpu(), top_k_indices.cpu()
