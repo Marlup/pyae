@@ -19,7 +19,7 @@ class EMIDataset(Dataset):
             
         data_output.update({"x": x})
         
-        if not self.x_categories is None:
+        if self.x_categories is not None:
             data_output.update({"x_categories": self.x_categories[index]})
         
         if len(self.x.shape) == 3:
@@ -31,7 +31,7 @@ class EMIDataset(Dataset):
         
         data_output.update({"y": y})
     
-        if not self.ids is None:
+        if self.ids is not None:
             data_output.update({"ids": self.ids[index]})
         else:
             data_output.update({"ids": ()})
@@ -63,12 +63,12 @@ class EMIDatasetClassifier(Dataset):
         
         data_output.update({"y": y})
         
-        if not self.x_categories is None:
+        if self.x_categories is not None:
             data_output.update({"x_categories": self.x_categories[index]})
         
         data_output.update({"y": y})
     
-        if not self.ids is None:
+        if self.ids is not None:
             data_output.update({"ids": self.ids[index]})
         else:
             data_output.update({"ids": ()})
