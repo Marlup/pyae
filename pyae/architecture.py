@@ -471,7 +471,7 @@ class ConvDecoder(AutoencoderLayerBuilder):
         if on_transpose_conv:
             self.add_transp_conv_layers(layer_specs)
         else:
-            self.add_transp_conv_layers(layer_specs)
+            self.add_conv_layers(layer_specs)
     
     def forward(self, x):
         return self.layers(x)
@@ -1065,16 +1065,6 @@ class InceptionAutoencoder(nn.Module):
         x = torch.sigmoid(self.dec_conv3(x))  # Using sigmoid for normalized outputs
         
         return x
-
-# Example usage
-in_channels = 1
-encoding_channels = 32
-bottleneck_channels = 64
-autoencoder = InceptionAutoencoder(in_channels, encoding_channels, bottleneck_channels)
-input_tensor = torch.randn(1, in_channels, 256)  # Example input tensor with shape (batch_size, channels, length)
-output_tensor = autoencoder(input_tensor)
-print(output_tensor.shape)  # Expected output shape: (batch_size, in_channels, length)
-
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
