@@ -484,6 +484,7 @@ class ConvAutoencoderImplicit(AutoencoderLayerBuilder):
         encoder_specs: list, 
         decoder_specs: list,
         on_global_pool=False,
+        on_transpose_conv=True,
         n_categories=0
     ):
         super(ConvAutoencoderImplicit, self).__init__()
@@ -508,7 +509,7 @@ class ConvAutoencoderImplicit(AutoencoderLayerBuilder):
             self.category_encoder = CategoricalEncoder(n_categories, latent_input_length)
         
         # Decoder
-        self.decoder = ConvDecoder(self.latent_output_channel, decoder_specs)
+        self.decoder = ConvDecoder(self.latent_output_channel, decoder_specs, on_transpose_conv=on_transpose_conv)
     
     def forward(self, x, x_category=None):
         x = self.encoder(x)
