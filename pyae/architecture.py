@@ -192,7 +192,8 @@ class AutoencoderLayerBuilder(nn.Module):
         Returns a pooling layer.
         
         Args:
-            pool (tuple): A tuple containing pool parameters [name, size, stride, padding].
+            pool (tuple): A tuple containing pool parameters [name, size, stride, padding] or 
+            for [name, scale_factor].
         
         Returns:
             torch.nn.Module: Pooling layer.
@@ -200,11 +201,16 @@ class AutoencoderLayerBuilder(nn.Module):
         Raises:
             ValueError: If the specified pooling type is not supported.
         """
-        name, size, stride, padding = pool
+        name, *params = pool
         if name == 'max_pool':
+            size, stride, padding = params
             return nn.MaxPool1d(size, stride, padding)
         elif name == 'avg_pool':
+            size, stride, padding = params
             return nn.AvgPool1d(size, stride, padding)
+        elif name == 'upsample':
+            scale_factor = params
+            return nn.Upsample(scale_factor=scale_factor, mode="linear", align_corners=True)
         else:
             raise ValueError(f"Pooling class '{name}' is not supported.")
     
@@ -449,7 +455,7 @@ class ConvDecoder(AutoencoderLayerBuilder):
         input_channel (int): Number of input channels.
         layer_specs (list): List of specifications for each layer.
     """
-    def __init__(self, input_channel, layer_specs: list):
+    def __init__(self, input_channel, layer_specs: list, on_transpose_conv=True):
         if not isinstance(layer_specs, list):
             raise ValueError("Input error. 'layer_specs' should be a list")
         
@@ -458,11 +464,15 @@ class ConvDecoder(AutoencoderLayerBuilder):
         # Decoder attributes
         self.layer_specs = layer_specs
         self.last_input_channel = input_channel
+        self.on_transpose_conv = on_transpose_conv
         self.layers = nn.Sequential()
         
         # Hidden layers
-        self.add_transp_conv_layers(layer_specs)
-
+        if on_transpose_conv:
+            self.add_transp_conv_layers(layer_specs)
+        else:
+            self.add_transp_conv_layers(layer_specs)
+    
     def forward(self, x):
         return self.layers(x)
 
@@ -966,6 +976,104 @@ class BottleneckBlock(nn.Module):
         out += self.shortcut(x)
         out = F.relu(out)
         return out
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class InceptionBlock1D(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(InceptionBlock1D, self).__init__()
+        
+        # Branch 1: 1x1 Convolution
+        self.branch1x1 = nn.Conv1d(in_channels, out_channels, kernel_size=1)
+        
+        # Branch 2: 1x1 Convolution followed by 3x3 Convolution
+        self.branch3x3_1 = nn.Conv1d(in_channels, out_channels // 2, kernel_size=1)
+        self.branch3x3_2 = nn.Conv1d(out_channels // 2, out_channels, kernel_size=3, padding=1)
+        
+        # Branch 3: 1x1 Convolution followed by two 3x3 Convolutions (approximating 5x5)
+        self.branch5x5_1 = nn.Conv1d(in_channels, out_channels // 2, kernel_size=1)
+        self.branch5x5_2 = nn.Conv1d(out_channels // 2, out_channels // 2, kernel_size=3, padding=1)
+        self.branch5x5_3 = nn.Conv1d(out_channels // 2, out_channels, kernel_size=3, padding=1)
+        
+        # Branch 4: 1x1 Convolution followed by three 3x3 Convolutions (approximating 7x7)
+        self.branch7x7_1 = nn.Conv1d(in_channels, out_channels // 2, kernel_size=1)
+        self.branch7x7_2 = nn.Conv1d(out_channels // 2, out_channels // 2, kernel_size=3, padding=1)
+        self.branch7x7_3 = nn.Conv1d(out_channels // 2, out_channels // 2, kernel_size=3, padding=1)
+        self.branch7x7_4 = nn.Conv1d(out_channels // 2, out_channels, kernel_size=3, padding=1)
+        
+        # Branch 5: 3x3 Max pooling followed by 1x1 Convolution
+        self.branch_pool = nn.MaxPool1d(kernel_size=3, stride=1, padding=1)
+        self.branch_pool_conv = nn.Conv1d(in_channels, out_channels, kernel_size=1)
+        
+    def forward(self, x):
+        branch1x1 = self.branch1x1(x)
+        
+        branch3x3 = self.branch3x3_1(x)
+        branch3x3 = F.relu(self.branch3x3_2(branch3x3))
+        
+        branch5x5 = self.branch5x5_1(x)
+        branch5x5 = F.relu(self.branch5x5_2(branch5x5))
+        branch5x5 = F.relu(self.branch5x5_3(branch5x5))
+        
+        branch7x7 = self.branch7x7_1(x)
+        branch7x7 = F.relu(self.branch7x7_2(branch7x7))
+        branch7x7 = F.relu(self.branch7x7_3(branch7x7))
+        branch7x7 = F.relu(self.branch7x7_4(branch7x7))
+        
+        branch_pool = self.branch_pool(x)
+        branch_pool = self.branch_pool_conv(branch_pool)
+        
+        # Concatenate branches along the channel axis (dimension 1)
+        output = torch.cat([branch1x1, branch3x3, branch5x5, branch7x7, branch_pool], dim=1)
+        
+        return output
+
+class InceptionAutoencoder(nn.Module):
+    def __init__(self, in_channels, encoding_channels, bottleneck_channels):
+        super(InceptionAutoencoder, self).__init__()
+        
+        # Encoder
+        self.enc_conv1 = nn.Conv1d(in_channels, 64, kernel_size=3, stride=2, padding=1)
+        self.enc_inception1 = InceptionBlock1D(64, encoding_channels)
+        self.enc_conv2 = nn.Conv1d(encoding_channels * 5, bottleneck_channels, kernel_size=3, stride=2, padding=1)
+        
+        # Bottleneck
+        self.bottleneck = nn.Conv1d(bottleneck_channels, bottleneck_channels, kernel_size=3, stride=2, padding=1)
+        
+        # Decoder
+        self.dec_conv1 = nn.ConvTranspose1d(bottleneck_channels, encoding_channels * 5, kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.dec_inception1 = InceptionBlock1D(encoding_channels * 5, encoding_channels)
+        self.dec_conv2 = nn.ConvTranspose1d(encoding_channels * 5, 64, kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.dec_conv3 = nn.ConvTranspose1d(64, in_channels, kernel_size=3, stride=2, padding=1, output_padding=1)
+        
+    def forward(self, x):
+        # Encoder
+        x = F.relu(self.enc_conv1(x))
+        x = self.enc_inception1(x)
+        x = F.relu(self.enc_conv2(x))
+        
+        # Bottleneck
+        x = F.relu(self.bottleneck(x))
+        
+        # Decoder
+        x = F.relu(self.dec_conv1(x))
+        x = self.dec_inception1(x)
+        x = F.relu(self.dec_conv2(x))
+        x = torch.sigmoid(self.dec_conv3(x))  # Using sigmoid for normalized outputs
+        
+        return x
+
+# Example usage
+in_channels = 1
+encoding_channels = 32
+bottleneck_channels = 64
+autoencoder = InceptionAutoencoder(in_channels, encoding_channels, bottleneck_channels)
+input_tensor = torch.randn(1, in_channels, 256)  # Example input tensor with shape (batch_size, channels, length)
+output_tensor = autoencoder(input_tensor)
+print(output_tensor.shape)  # Expected output shape: (batch_size, in_channels, length)
+
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):

@@ -20,7 +20,7 @@ def generate_noisy_signals(x, amplitudes=None):
         ndarray: Array of noisy signals.
     """
     if not isinstance(amplitudes, (float, np.ndarray, list, tuple, type(None))):
-        raise Exception("Parameter error. 'amplitudes' must be either an ndarray, list, tuple, float, or None.")
+        raise Exception("'amplitudes' must be either an ndarray, list, tuple, float, or None.")
 
     if isinstance(amplitudes, (float, )):
         amplitudes = [amplitudes]

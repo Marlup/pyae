@@ -143,7 +143,7 @@ def _extract_sheet_data(
     Returns:
         A double-nested list containing the values extracted from the sheet.
     """
-    if not ws:
+    if ws is None:
         raise Exception("Input error. 'ws' is not defined.")
     data = []
     matrix_rows = []
