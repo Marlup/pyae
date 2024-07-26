@@ -209,8 +209,8 @@ class AutoencoderLayerBuilder(nn.Module):
             size, stride, padding = params
             return nn.AvgPool1d(size, stride, padding)
         elif name == 'upsample':
-            scale_factor = params[0]
-            return nn.Upsample(scale_factor=scale_factor, mode="linear", align_corners=True)
+            size, scale_factor = params # One of size or scale_factor should be None, but not both.
+            return nn.Upsample(size=size, scale_factor=scale_factor, mode="linear", align_corners=True)
         else:
             raise ValueError(f"Pooling class '{name}' is not supported.")
     
