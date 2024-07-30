@@ -5,6 +5,7 @@ import torch
 from torch import nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
+import pandas as pd
 from matplotlib import pyplot as plt
 
 from .constant import (
@@ -12,6 +13,8 @@ from .constant import (
 )
 
 from .evaluation import plot_reconstruction
+from pyae.evaluation import plot_reconstruction, compute_losses_from_dataset
+from pyae.utils import get_timestamp
 
 ################## 
 #### Training ####
@@ -65,38 +68,48 @@ class TrainingManager:
         model, 
         train_loader,
         eval_loader=None,
+        group_test_loaders=None,
         optimizer=None,
         criterion=None, 
+        metrics=None, 
         lr_scheduler=None, 
         epochs=10, 
         tol=4e-5,
         max_no_improvements=5,
+        checkpoint_frequency=5,
+        self.model_directory="",
         T=10, 
         mode="standard",
         n_clusters=0, 
         postrain_config={},
-        **kwargs
+        n_display_reset=6,
     ):
         self.model = model
         self.train_loader = train_loader
         self.eval_loader = eval_loader
+        self.group_test_loaders = group_test_loaders
         self.optimizer = optimizer
         self.criterion = criterion
+        self.metrics = metrics
         self.lr_scheduler = lr_scheduler
         self.epochs = epochs
         self.tol = tol
         self.max_no_improvements = max_no_improvements
+        self.checkpoint_frequency = checkpoint_frequency
+        if self.model_directory:
+            self.model_directory = "../data/models"
         self.T = T
         self.mode = mode
         self.n_clusters = n_clusters
+        self.n_display_reset = n_display_reset
 
         # Initialize dictionary to save default training parameters
-        self._set_default_postrain_config(postrain_config)
+        if mode == "dcec":
+            self._set_default_postrain_config(postrain_config)
         
         self.train_losses = []
         self.eval_losses = []
         self.p_target = None
-        self.n_display_reset = kwargs.get("n_display_reset", 6)
         self.prev_loss = float("inf")
         self.no_improvement_count = 0
 
@@ -115,7 +128,8 @@ class TrainingManager:
     
     def train_model(self):
         # Run pretraining
-        self.pretrain_model()
+        if self.mode == "dcec":
+            self.pretrain_model()
 
         # Run main training
         self._train_model()
@@ -124,7 +138,8 @@ class TrainingManager:
         #self.reset_manager(True)
         
         # Run last training
-        self.postrain_model()
+        if self.mode == "dcec":
+            self.postrain_model()
 
     def reset_manager(self, full_reset=True):
         self.p_target = 0
@@ -171,6 +186,7 @@ class TrainingManager:
         self.postrain_config = {}
         
         self.postrain_config["epochs"] = self.epochs
+        
         optimizer_defaults = self.optimizer.defaults
         self.postrain_config["weight_decay"] = optimizer_defaults.get("weight_decay", 0.0)
         self.postrain_config["base_lr"] = optimizer_defaults.get("lr", 0.01)
@@ -184,9 +200,10 @@ class TrainingManager:
             self.postrain_config["T"] = self.T
         self.postrain_config["early_stopping_tol"] = self.tol
         self.postrain_config["max_no_improvements"] = self.max_no_improvements
-
+        
         # Update configuration dict with custom parameters
-        self.postrain_config.update(config)
+        if config:
+            self.postrain_config.update(config)
     
     def kmeans_pretrain(self):
         from sklearn.cluster import KMeans
@@ -202,9 +219,6 @@ class TrainingManager:
         self.model.clustering.initialize_weights(torch.tensor(initializer.cluster_centers_))
         
     def pretrain_model(self):
-        if self.mode != "dcec":
-            return None
-        
         if self._should_update_p_target():
             self._update_p_target()
 
@@ -214,9 +228,6 @@ class TrainingManager:
         self.criterion.gamma = 0.0
 
     def postrain_model(self):
-        if self.mode != "dcec":
-            return None
-
         # Freeze autoencoder parameters
         self.model.freeze_ae_parameters()
         
@@ -240,12 +251,17 @@ class TrainingManager:
             # Train one epoch
             epoch_loss = self._train_epoch()
             self.train_losses.append(epoch_loss)
+
+            # Save model at checkpoint
+            if epochs % self.checkpoint_frequency == 0:
+                self._save_state(epoch, loss)
             
             # Learning rate scheduler step
             if self.lr_scheduler:
                 self.lr_scheduler.step()
                 
             # Evaluate one epoch
+            # Run one step of early_stopping
             if self.eval_loader is not None:
                 eval_loss = self._eval_epoch()
                 self.eval_losses.append(eval_loss)
@@ -263,26 +279,7 @@ class TrainingManager:
                 clear_output()
         
         self.model.eval()
-
-    def _early_stopping(self, current_loss):
-        """
-        Returns True if there weren't sufficient improvements,
-        otherwise False.
-        """
-        
-        loss_change = abs(self.prev_loss - current_loss)
-        
-        if loss_change < self.tol:
-            self.no_improvement_count += 1
-        else:
-            self.no_improvement_count = 0
-        
-        if self.no_improvement_count >= self.max_no_improvements:
-            self.no_improvement_count = 0
-            print(f"Early stopping after {self.max_no_improvements} epochs: Loss improvement threshold reached.")
-            return True
-        return False
-        
+    
     @results_training_epoch
     def _train_epoch(self):
         self.model.train()
@@ -294,14 +291,11 @@ class TrainingManager:
             self._update_p_target()
         
         for i, batch in enumerate(self.train_loader):
-            x, target = batch["x"], batch["y"]
-            x_categories = batch.get("x_categories", None)
-            
             # Reset gradients for a new batch
             self.optimizer.zero_grad()
             
             # Compute forward step and loss
-            loss = self._compute_batch_loss(x, x_categories, target)
+            loss = self._compute_batch_loss(batch)
             
             # Compute backpropagation
             self._compute_graph_gradients(loss)
@@ -312,8 +306,27 @@ class TrainingManager:
             epoch_loss += loss.item()
         
         return epoch_loss / len(self.train_loader.dataset)
+    
+    @results_evaluation_epoch
+    def _eval_epoch(self):
+        self.model.eval()
+        epoch_loss = 0.0
+        
+        with torch.no_grad():
+            for batch in self.eval_loader:
+                loss = self._compute_batch_loss(batch)
+                epoch_loss += loss.item()
+        
+        return epoch_loss / len(self.eval_loader.dataset)
 
-    def _compute_batch_loss(self, x, x_categories, target, **kwargs):
+    def _compute_batch_loss(self, batch, **kwargs):
+        x, target = batch["x"], batch["y"]
+        
+        if self.mode == "standard":
+            x_categories = batch["x_categories"]
+        else:
+            x_categories = None
+        
         if self.mode == "standard":
             return self._compute_batch_loss_standard(x, x_categories, target, **kwargs)
         elif self.mode == "stack":
@@ -327,57 +340,6 @@ class TrainingManager:
         else:
             raise ValueError(f"Unsupported mode: {mode}")
     
-    def _compute_graph_gradients(self, loss):
-        loss.backward()
-        
-    def _update_parameters(self):
-        self.optimizer.step()
-    
-    def _should_update_p_target(self):
-        return self.T > 0 and len(self.train_loader.dataset) % self.T == 0
-    
-    def _update_p_target(self):
-        print("Updating target distribution...")
-        all_q_dists = self._unbatch_outputs(index_select=-1)
-        all_q_dists = torch.cat(all_q_dists, dim=0)
-        self.p_target = self.model.get_target_distribution(all_q_dists)
-        self.model.train()
-
-    def _unbatch_outputs(self, dataloader=None, dim=0, index_select=None):
-        unbatched_outputs = []
-        self.model.eval()
-
-        if dataloader is None:
-            dataloader = self.train_loader
-        with torch.no_grad():
-            for batch in dataloader:
-                x, x_categories, _ = batch["x"], batch["x_categories"], batch["y"]
-                
-                outputs = self.model(x, x_categories)
-                
-                if index_select is None:
-                    unbatched_outputs.append(outputs)
-                else:
-                    # Select a specific element of the iterable output
-                    unbatched_outputs.append(outputs[index_select])
-        
-        # Concatenate all unbatched_outputs to form a complete set
-        return torch.cat(unbatched_outputs, dim=dim)
-
-    @results_evaluation_epoch
-    def _eval_epoch(self):
-        self.model.eval()
-        epoch_loss = 0.0
-        
-        with torch.no_grad():
-            for batch in self.eval_loader:
-                x, target = batch["x"], batch["y"]
-                x_categories = batch.get("x_categories", None)
-                loss = self._compute_batch_loss(x, x_categories, target)
-                epoch_loss += loss.item()
-        
-        return epoch_loss / len(self.eval_loader.dataset)
-
     def _compute_batch_loss_standard(self, x, x_categories, target, return_outputs=False):
         outputs = self.model(x, x_categories)
         loss = self.criterion(outputs, target) 
@@ -401,7 +363,7 @@ class TrainingManager:
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
-
+    
     def _compute_batch_loss_dcec(self, x, x_categories, target, return_outputs=False):
         outputs, z, q_dist = self.model(x, x_categories)
         #on_update_p_target = self._should_update_p_target()
@@ -413,7 +375,7 @@ class TrainingManager:
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
-        
+    
     def _compute_batch_classification(self, x, target, return_outputs=False):
         outputs = self.model(x)
         
@@ -423,6 +385,88 @@ class TrainingManager:
             return loss.cpu(), outputs.cpu()
         return loss
     
+    def _compute_graph_gradients(self, loss):
+        loss.backward()
+        
+    def _update_parameters(self):
+        self.optimizer.step()
+    
+    def _should_update_p_target(self):
+        return self.T > 0 and len(self.train_loader.dataset) % self.T == 0
+    
+    def _update_p_target(self):
+        print("Updating target distribution...")
+        all_q_dists = self._unbatch_outputs(index_select=-1)
+        all_q_dists = torch.cat(all_q_dists, dim=0)
+        self.p_target = self.model.get_target_distribution(all_q_dists)
+        self.model.train()
+
+    def _unbatch_outputs(self, dataloader=None, dim=0, index_select=None):
+        unbatched_outputs = []
+        self.model.eval()
+
+        if dataloader is None:
+            dataloader = self.train_loader
+        
+        with torch.no_grad():
+            for batch in dataloader:
+                x, x_categories = batch["x"], batch["x_categories"]
+                
+                outputs = self.model(x, x_categories)
+                
+                if index_select is None:
+                    unbatched_outputs.append(outputs)
+                else:
+                    # Select a specific element of the iterable output
+                    unbatched_outputs.append(outputs[index_select])
+        
+        # Concatenate all unbatched_outputs to form a complete set
+        return torch.cat(unbatched_outputs, dim=dim)
+
+    def _early_stopping(self, current_loss):
+        """
+        Returns True if there weren't sufficient improvements,
+        otherwise False.
+        """
+        
+        loss_change = abs(self.prev_loss - current_loss)
+        
+        if loss_change < self.tol:
+            self.no_improvement_count += 1
+        else:
+            self.no_improvement_count = 0
+        
+        if self.no_improvement_count >= self.max_no_improvements:
+            self.no_improvement_count = 0
+            print(f"Early stopping after {self.max_no_improvements} epochs: Loss improvement threshold reached.")
+            return True
+        return False
+
+    def _save_state(self, epoch, loss):
+        model_name = f"model_checkpoint_epoch_{ts}_at_{get_timestamp()}.pt"
+        model_path = os.path.join(self.model_directory, model_name)
+        
+        torch.save(
+            {
+                'epoch': epoch,
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                'loss': loss,
+            }, 
+            model_path
+        )
+
+    def _load_state(self, model_name, on_eval=True):
+        model_path = os.path.join(self.model_directory, model_name)
+        checkpoint = torch.load(model_path)
+        
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        if on_eval:
+            self.model.eval()
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        
+        return checkpoint.get("epoch", None), checkpoint.get("loss", None)
+        
     def evaluate_model(self):
         self.model.eval()
         eval_loss = 0.0
@@ -438,190 +482,52 @@ class TrainingManager:
         return avg_eval_loss
 
     def plot_losses(self):
-        plot_losses(self.train_losses, 
-                    self.eval_losses, 
-                    epochs=self.postrain_config["epochs"],
-                    lr=self.postrain_config["base_lr"],
-                    gamma=self.postrain_config["lr_scheduler_gamma"],
-                    step_size=self.postrain_config["lr_scheduler_step_size"]
-                   )
+        if self.mode == "dcec":
+            epochs = self.postrain_config["epochs"]
+            learning_rate = self.postrain_config["base_lr"]
+            gamma = self.postrain_config["lr_scheduler_gamma"]
+            step_size = self.postrain_config["lr_scheduler_step_size"]
+        else:
+            epochs = self.epochs
+            learning_rate = self.base_lr
+            gamma = self.gamma
+            step_size = self.step_size
+            
+        plot_losses(
+            self.train_losses, 
+            self.eval_losses, 
+            epochs=epochs,
+            learning_rate=learning_rate
+            gamma=gamma
+            step_size=step_size
+            )
 
-# Define training function
-# Why we use splat operator in model(batch["x"], batch["x_categories"])?
-# https://discuss.pytorch.org/t/typeerror-linear-argument-input-position-1-must-be-tensor-not-int/158080/3
-def train_model(
-    model,
-    optimizer,
-    criterion,
-    train_loader,
-    eval_loader=None,
-    lr_scheduler=None,
-    epochs=10,
-    tol=4e-5,
-    mode="regular", 
-    **kwargs
-):
-    """
-    Trains the given model using the provided optimizer and criterion.
+    def report_model_evaluation(self, kind_plot="bar", figsize=(12, 8), on_return_dataframe=True):
+        metrics_losses = []
+        dataloaders_label = []
 
-    Args:
-        model (nn.Module): The model to train.
-        optimizer (torch.optim.Optimizer): The optimizer to use for training.
-        criterion (callable): The loss function to optimize.
-        train_loader (DataLoader): DataLoader for the training data.
-        eval_loader (DataLoader, optional): DataLoader for the evaluation data. Default: None.
-        lr_scheduler (torch.optim.lr_scheduler, optional): Learning rate scheduler. Default: None.
-        epochs (int, optional): Number of training epochs. Default: 10.
-        tol (float, optional): Tolerance for early stopping based on loss improvement. Default: 4e-5.
-        mode (str, optional): Training mode. Default: "regular".
-        **kwargs: Additional keyword arguments to be passed to the training and evaluation loops.
+        # Compute the metric scores/losses for each dataframe provided
+        for dataloader_label, test_loader in self.group_test_loaders.item():
+            metric_losses = compute_losses_from_dataset(self.training_manager, test_loader, self.metrics)
+            
+            metrics_losses.append(metric_losses)
+            dataloaders_label.append(dataloader_label)
 
-    Returns:
-        tuple: A tuple containing training losses and evaluation losses.
-    """
-    n_display_reset = kwargs.get("n_display_reset", 6)
-    
-    train_losses = []
-    eval_losses = []
-    
-    prev_loss = float('inf')
-    no_improvement_count = 0
-    
-    for epoch in range(epochs):
-        print(f"Epoch {epoch + 1}/{epochs}")
-        print(40 * "-")
+        # Build a dataframe for the metrics
+        metrics_by_dataloader = pd.DataFrame(metrics_losses,
+                                             index=dataloaders_label) \
+                                  .T
+        # Plot the metrics
+        metrics_by_dataloader.plot(kind=kind_plot, rot=30, figsize=figsize)
         
-        # Train one epoch
-        epoch_loss = _train_epoch(model, train_loader, optimizer, criterion, mode, **kwargs)
-        
-        # Evaluate one epoch
-        if eval_loader is not None:
-            model.eval()
-            eval_loss = _eval_epoch(model, eval_loader, criterion, mode, **kwargs)
-            eval_losses.append(eval_loss)
-        
-        # Learning rate scheduler
-        if lr_scheduler:
-            lr_scheduler.step()
-        
-        # Store the training loss
-        train_losses.append(epoch_loss)
-        
-        # Check for early stopping
-        if epoch > 0:
-            loss_change = prev_loss - epoch_loss
-            if loss_change < tol:
-                no_improvement_count += 1
-            else:
-                no_improvement_count = 0
-            if no_improvement_count >= 2:
-                print("Early stopping: Loss improvement threshold reached.")
-                break
-            prev_loss = epoch_loss
-        
-        # Clear output if required
-        if epoch > 0 and epoch % n_display_reset == 0:
-            clear_output()
-    
-    model.eval()
-    return train_losses, eval_losses
-
-@results_training_epoch
-def _train_epoch(model, data_loader, optimizer, criterion, mode, **kwargs):
-    """
-    Training loop for the model.
-
-    Args:
-        model (nn.Module): The model to train.
-        data_loader (DataLoader): DataLoader for the training data.
-        optimizer (torch.optim.Optimizer): The optimizer to use for training.
-        criterion (callable): The loss function to optimize.
-        mode (str): Training mode.
-        **kwargs: Additional keyword arguments.
-
-    Returns:
-        float: The average epoch loss.
-    """
-    model.train()
-    epoch_loss = 0.0
-
-    for batch in data_loader:
-        # Reset gradients for a new batch
-        optimizer.zero_grad()
-        # Compute forward to get the outputs (predictions)
-        outputs = model(batch["x"], *batch["x_categories"])
-        #outputs, target = _get_outputs_and_try_target(outputs, batch["y"])
-        #loss = criterion(outputs, target)
-        # Compute the loss between output and target
-        loss = _get_loss_by_mode(batch["y"], outputs, criterion, mode)
-        # Compute backpropagation
-        loss.backward()
-        optimizer.step()
-        epoch_loss += loss.item()
-
-    return epoch_loss / len(data_loader.dataset)
-
-@results_evaluation_epoch
-def _eval_epoch(model, data_loader, criterion, mode, **kwargs):
-    """
-    Evaluate the model on the given data loader and calculate the loss.
-
-    Args:
-        model (nn.Module): The model to evaluate.
-        data_loader (DataLoader): The DataLoader containing the evaluation data.
-        criterion (callable): The loss function to use.
-        mode (str): The mode to use for loss calculation.
-        **kwargs: Additional keyword arguments.
-
-    Returns:
-        torch.Tensor: The calculated evaluation loss.
-    """
-    epoch_loss = 0.0
-    with torch.no_grad():
-        for batch in data_loader:
-            # Compute forward to get the outputs (predictions)
-            outputs = model(batch["x"], *batch["x_categories"])
-            # Compute the loss between output and target
-            loss = _get_loss_by_mode(batch["y"], outputs, criterion, mode)
-            epoch_loss += loss.item()  # Accumulate batch loss
-
-    # Calculate average loss over the dataset
-    avg_loss = epoch_loss / len(data_loader.dataset)
-    return avg_loss
-
-def evaluate_model(model, criterion, data_loader, mode="regular"):
-    """
-    Evaluate the model on the given data loader using the specified criterion.
-
-    Args:
-        model (nn.Module): The model to evaluate.
-        criterion (callable): The loss function to use for evaluation.
-        data_loader (DataLoader): The DataLoader containing the evaluation data.
-        mode (str, optional): The mode to use for loss calculation. Defaults to "regular".
-
-    Returns:
-        float: The average evaluation loss.
-    """
-    model.eval()
-    eval_loss = 0.0
-    eval_losses = []
-    with torch.no_grad():
-        for batch in data_loader:
-            # Compute the loss between output and target for the current batch
-            loss = _eval_epoch(model, batch, criterion, mode)
-            eval_loss += loss
-            # Store loss
-            eval_losses.append(loss)
-
-    # Calculate average evaluation loss
-    avg_eval_loss = eval_loss / len(data_loader.dataset)
-    return avg_eval_loss
+        if on_return_dataframe:
+            return metrics_by_dataloader
 
 def plot_losses(train_losses, eval_losses=None, **kwargs):
     fig = plt.figure()
     y_lim = kwargs.get("y_lim", None)
     epochs = kwargs.get("epochs", None)
-    lr = kwargs.get("lr", None)
+    learning_rate = kwargs.get("learning_rate", None)
     gamma = kwargs.get("gamma", None)
     step_size = kwargs.get("step_size", None)
     color = kwargs.get("color", "red")
@@ -630,9 +536,9 @@ def plot_losses(train_losses, eval_losses=None, **kwargs):
     if eval_losses:
         plt.plot(eval_losses, label='Validation Loss')
     
-    if lr and gamma and step_size and epochs:
-        for pos, lr_value in enumerate(get_exp_adaptive_learning(epochs, lr, gamma, step_size)):
-            x = step_size * (pos + 1)
+    if learning_rate and gamma and step_size and epochs:
+        for position, _ in enumerate(get_exp_adaptive_learning(epochs, learning_rate, gamma, step_size)):
+            x = step_size * (position + 1)
             plt.axvline(x, 0.0, 1.0, color=color, alpha=0.2)
     
     plt.xlabel('Epoch')
