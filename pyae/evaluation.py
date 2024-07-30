@@ -2,13 +2,13 @@ import torch
 from matplotlib import pyplot as plt
 
 def plot_reconstruction(
-    dataloader, 
-    training_manager, 
-    n_reconstructions=20, 
-    n_columns=4, 
-    width=12, 
-    height_per_row=3, 
-    digits=4, 
+    dataloader,
+    training_manager,
+    n_reconstructions=20,
+    n_columns=4,
+    width=12,
+    height_per_row=3,
+    digits=4,
     suptitle="Reconstruction of signals"
 ):
     """
@@ -25,48 +25,43 @@ def plot_reconstruction(
         suptitle (str, optional): Title of the figure. Default is "Reconstruction of signals".
     """
     if dataloader.batch_size > 1:
-        raise Exception(f"Current batch_size in 'dataloader' is {dataloader.batch_size}, but it should be 1")
+        raise Exception(f"Argument error. 'dataloader' batch_size should be 1. \
+Current batch_size is {dataloader.batch_size}")
 
     # Set model to evaluation mode
     training_manager.model.eval()
-    
+
     # Make subplots
     n_rows = n_reconstructions // n_columns
     figsize = (width, height_per_row * n_rows)
-    _, axes = plt.subplots(n_reconstructions // n_columns, 
-                             n_columns, 
+    fig, axes = plt.subplots(n_reconstructions // n_columns,
+                             n_columns,
                              figsize=figsize)
     # Make axes a 1d-array for ease of use
     axes = axes.ravel()
-    
+
     for i, batch in enumerate(dataloader):
         if i >= n_reconstructions:
             break
 
-        ## Setup data
-        x, y = batch["x"], batch["y"]
-        x_categories = batch.get("x_categories", None)
-        ids = batch["ids"]
-        
         # Squeeze target and reconstruction (prediction) into 1d-array
-        deviation, reconstruction = training_manager._compute_batch_loss(x, x_categories, y, return_outputs=True)
-        
+        deviation, reconstruction = training_manager._compute_batch_loss(batch, return_outputs=True)
+
         # Plot original and reconstructed signals
-        axes[i].plot(y.cpu().detach().numpy().squeeze(), label="Original", color="blue")
+        axes[i].plot(batch["y"].cpu().detach().numpy().squeeze(), label=f"Original", color="blue")
         axes[i].plot(reconstruction.cpu().detach().numpy().squeeze(), label="Predicted", color="green")
-        
+
         # Setup labels, title and embellishments
         title = f"Loss: {round(deviation.cpu().item(), digits)}"
-        
-        if ids:
-            ids_format = "load {}, sweep {}, sensor {}".format(*ids)
+        if batch["ids"]:
+            ids_format = "load {}, sweep {}, sensor {}".format(*batch["ids"])
             title += f";\nSignal id: {ids_format}"
-        
+
         axes[i].set_title(title)
         axes[i].set_xlabel("Frequency")
         axes[i].set_ylabel("Impedance")
         axes[i].legend(fontsize=8)
-    
+
     plt.suptitle(suptitle)
     plt.tight_layout()
 
@@ -114,25 +109,21 @@ Current batch_size is {dataloader.batch_size}")
         if i >= n_reconstructions:
             break
         
-        # Setup data
-        x, y = batch["x"], batch["y"]
-        x_categories = batch.get("x_categories", None)
-        
         # Squeeze target and reconstruction (prediction) into 1d-array; ## Compute losses
-        deviation, reconstruction = training_manager._compute_batch_loss(x, x_categories, y, return_outputs=True)
+        deviation, reconstruction = training_manager._compute_batch_loss(batch, return_outputs=True)
         deviation = deviation.item()
         reconstruction = reconstruction.cpu().detach().squeeze()
         
         # Lower confidence interval band
-        lower_recon = models_ci[0](x, *x_categories).detach()
-        lower_recon = lower_recon.cpu().squeeze()
+        lower_recon = models_ci[0](batch["x"], *x_categories).detach()
+        lower_recon = lower_recon.cpu().detach().squeeze()
         # Upper confidence interval band
-        upper_recon = models_ci[1](x, *x_categories).detach()
-        upper_recon = upper_recon.cpu().squeeze()
+        upper_recon = models_ci[1](batch["x"], *x_categories).detach()
+        upper_recon = upper_recon.cpu().detach().squeeze()
         
         # Plot original and reconstruction signals with confidence intervals
         y = y.squeeze()
-        axes[i].plot(y, label="Original", color="blue")
+        axes[i].plot(batch["y"], label="Original", color="blue")
         axes[i].plot(reconstruction, label="Predicted", color="green")
         axes[i].plot(lower_recon, label="Lower band", color="cyan")
         axes[i].plot(upper_recon, label="Upper interval", color="red")
@@ -215,26 +206,27 @@ def plot_model_reconstruction_deviation(
         
     plt.tight_layout()
 
-def compute_losses_from_dataset(training_manager, dataloader, losses, on_vae=False):
+def compute_losses_from_dataloader(training_manager, dataloader, losses, on_vae=False):
     """
     Compute losses from a dataset using a model and specified loss functions.
 
     Args:
         training_manager (nn.Module): TrainingManager which contains the model and training functionalities.
         dataloader (torch.utils.data.DataLoader): DataLoader containing the dataset.
-        losses (dict): Dictionary with keys as the name of the loss and values as loss instances.
+        losses (tuple): Tuple with name of loss and loss in that specific order.
         on_vae (bool, optional): Whether the model is a Variational Autoencoder (VAE). Default is False.
 
     Returns:
         dict: Dictionary of loss statistics with keys as concatenated loss name and statistic (e.g., "loss_mean").
     """
     training_manager.model.eval()
-    deviations = {}
+    losses_statistics = {}
 
-    for name, loss in losses.items():
-        deviation = get_loss_statistics(training_manager, dataloader, loss, on_vae=on_vae)
-        deviations.update({f"{name}_{k}": v for k, v in deviation.items()})
-    return deviations
+    for loss_name, loss_func in losses:
+        loss_statistics = get_loss_statistics(training_manager, dataloader, loss_func, on_vae=on_vae)
+        losses_statistics.update({f"{loss_name}_{stat_name}": stat_value.item() for stat_name, stat_value in loss_statistics.items()})
+    
+    return losses_statistics
 
 def compute_loss(training_manager, dataloader, loss_func, on_vae):
     """
@@ -251,13 +243,10 @@ def compute_loss(training_manager, dataloader, loss_func, on_vae):
     """
     losses = []
     for batch in dataloader:
-        # Setup data
-        x, y = batch["x"], batch["y"]
-        x_categories = batch.get("x_categories", None)
-        
-        loss = training_manager._compute_batch_loss(x, x_categories, y)
+        loss = training_manager._compute_batch_loss(batch)
 
         losses.append(loss)
+    
     return torch.tensor(losses, dtype=torch.float32)
 
 def get_loss_statistics(training_manager, dataloader, loss_func, on_vae=False):
@@ -274,6 +263,7 @@ def get_loss_statistics(training_manager, dataloader, loss_func, on_vae=False):
         dict: Dictionary of loss statistics with keys 'mean', 'std', 'median', and 'iqr'.
     """
     losses = compute_loss(training_manager, dataloader, loss_func, on_vae=on_vae)
+    
     return {
         "mean": losses.mean(),
         "std": losses.std(),

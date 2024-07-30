@@ -1,5 +1,9 @@
+from datetime import datetime
+
 import torch
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 
 def get_decoder_params(encoder_model, 
                        latent_output_length, 
@@ -125,25 +129,51 @@ def _conv_transpose1d_output_length(L_in, kernel_size, stride=1, padding=0, outp
     L_out = (L_in - 1) * stride - 2 * padding + dilation * (kernel_size - 1) + output_padding + 1
     return L_out
 
-###############
-# Deprecated #
-##############
+# Function to generate frames for the animation
+def generate_frames(x, sequence, update_func, init_func, frame_rate=1000, x_lab="x", y_lab="y", on_keep=False):
+    from functools import partial
+    
+    fig, axes = plt.subplots()
+    axes.set_xlabel(x_lab)  # Set X axis label
+    axes.set_ylabel(y_lab)  # Set Y axis label
+    axes.legend()  # Add legend
+    
+    anim = FuncAnimation(fig, update_func, frames=len(sequence), init_func=init_func, interval=frame_rate)
+    return anim
 
-def entropy(*ps):
-    if not isinstance(ps, np.ndarray):
-        ps = np.array(ps)
-    ps = ps.squeeze()
-    #print(ps, np.log(ps), -ps * np.log(ps), -np.sum(ps * np.log(ps)))
-    return -ps.dot(np.log(ps))
+def make_gif(x, sequence, update_func, init_func, frame_rate=1000, gif_path="./new_gif.gif", root_path="./images", x_lab="x", y_lab="y", on_return_anim=False):
+    # Make a sequential animation.
+    animation = generate_frames(x, sequence, update_func, frame_rate=frame_rate, x_lab=x_dim, y_lab=y_lab)
     
-def cross_entropy(p_target, p_candidate):
-    if not isinstance(p_target, np.ndarray):
-        p_target = np.array(p_target)
-    if not isinstance(p_candidate, np.ndarray):
-        p_candidate = np.array(p_candidate)
-    
-    p_target = p_target.squeeze()
-    p_candidate = p_candidate.squeeze()
-    
-    #print(ps, np.log(ps), -ps * np.log(ps), -np.sum(ps * np.log(ps)))
-    return -p_target.dot(np.log(p_candidate))
+    # Save the animation as a gif: a movie file by drawing every frame.
+    path = os.path.join(root_path, gif_path)
+    anim.save(path, writer="pillow")
+
+    if on_return_anim:
+        return anim
+
+def init_barplot():
+    # Initialize the bar plot
+    bars = axes.bar(x, sequence[0])  # Start with the first frame
+    # Initialize the bars (optional)
+    return bars
+
+def update_barplot(frame, *args):
+    # Update bar heights based on the current frame
+    for bar, height in zip(bars, sequence[frame]):
+        bar.set_height(height)
+    return bars
+
+def update_overlap(frame, *args, **kwargs):
+    if frame < len(data):
+        for i, line in enumerate(lines[:frame + 1]):
+            line.set_ydata(data[i])
+            
+        # Adjusting X and Y axis dynamically
+        ax.relim()  # Update axis limits
+        ax.autoscale_view()  # Autoscale
+
+    return lines, annotation
+
+def get_timestamp(complete=, sep="_"):
+    return datetime.now().strftime(f"%Y-%m-%d{sep}%H-%M")
