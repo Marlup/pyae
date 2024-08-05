@@ -442,7 +442,7 @@ class TrainingManager:
         return False
 
     def _save_state(self, epoch, loss):
-        model_name = f"model_checkpoint_epoch_{ts}_at_{get_timestamp()}.pt"
+        model_name = f"model_checkpoint_epoch_{epoch}_at_{get_timestamp()}.pt"
         model_path = os.path.join(self.model_directory, model_name)
         
         torch.save(
