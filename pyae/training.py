@@ -254,8 +254,8 @@ class TrainingManager:
             self.train_losses.append(epoch_loss)
 
             # Save model at checkpoint
-            if epochs % self.checkpoint_frequency == 0:
-                self._save_state(epoch, loss)
+            if self.epochs % self.checkpoint_frequency == 0:
+                self._save_state(epoch, epoch_loss)
             
             # Learning rate scheduler step
             if self.lr_scheduler:
