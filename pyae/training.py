@@ -499,8 +499,8 @@ class TrainingManager:
             self.train_losses, 
             self.eval_losses, 
             epochs=epochs,
-            learning_rate=learning_rate
-            gamma=gamma
+            learning_rate=learning_rate,
+            gamma=gamma,
             step_size=step_size
             )
 
