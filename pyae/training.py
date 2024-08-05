@@ -12,8 +12,7 @@ from .constant import (
     RANDOM_STATE
 )
 
-from .evaluation import plot_reconstruction
-from pyae.evaluation import plot_reconstruction, compute_losses_from_dataset
+from pyae.evaluation import plot_reconstruction, compute_losses_from_dataloader
 from pyae.utils import get_timestamp
 
 ################## 
@@ -510,7 +509,7 @@ class TrainingManager:
 
         # Compute the metric scores/losses for each dataframe provided
         for dataloader_label, test_loader in self.group_test_loaders.item():
-            metric_losses = compute_losses_from_dataset(self.training_manager, test_loader, self.metrics)
+            metric_losses = compute_losses_from_dataloader(self.training_manager, test_loader, self.metrics)
             
             metrics_losses.append(metric_losses)
             dataloaders_label.append(dataloader_label)
