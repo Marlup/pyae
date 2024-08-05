@@ -175,5 +175,5 @@ def update_overlap(frame, *args, **kwargs):
 
     return lines, annotation
 
-def get_timestamp(complete=, sep="_"):
+def get_timestamp(sep="_"):
     return datetime.now().strftime(f"%Y-%m-%d{sep}%H-%M")
