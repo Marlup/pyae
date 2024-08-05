@@ -323,10 +323,8 @@ class TrainingManager:
     def _compute_batch_loss(self, batch, **kwargs):
         x, target = batch["x"], batch["y"]
         
-        if self.mode == "standard":
-            x_categories = batch["x_categories"]
-        else:
-            x_categories = None
+        if self.mode != "classification":
+            x_categories = batch.get("x_categories", None)
         
         if self.mode == "standard":
             return self._compute_batch_loss_standard(x, x_categories, target, **kwargs)
