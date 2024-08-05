@@ -514,7 +514,7 @@ class ConvAutoencoderImplicit(AutoencoderLayerBuilder):
     def forward(self, x, x_category=None):
         x = self.encoder(x)
         
-        if not x_category is None:
+        if self.n_categories > 0 and x_category is not None:
             x_category_encoding = self.category_encoder(x_category)#.unsqueeze(1)
             
             inputs_concat = [x, x_category_encoding]
@@ -572,7 +572,7 @@ class ConvAutoencoderLatentFC1(AutoencoderLayerBuilder):
         x = self.encoder(x)
         x = self.latent(x)
         
-        if not x_category is None:
+        if self.n_categories > 0 and x_category is not None:
             x_category_encoding = self.category_encoder(x_category)#.unsqueeze(1)
             
             inputs_concat = [x, x_category_encoding]
