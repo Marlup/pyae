@@ -77,7 +77,7 @@ class TrainingManager:
         tol=4e-5,
         max_no_improvements=5,
         checkpoint_frequency=5,
-        self.model_directory="",
+        model_directory="",
         T=10, 
         mode="standard",
         n_clusters=0, 
@@ -96,8 +96,10 @@ class TrainingManager:
         self.tol = tol
         self.max_no_improvements = max_no_improvements
         self.checkpoint_frequency = checkpoint_frequency
-        if self.model_directory:
-            self.model_directory = "../data/models"
+        if model_directory:
+            self.model_directory = "../data/models/checkpoints"
+        else:
+            self.model_directory = model_directory
         self.T = T
         self.mode = mode
         self.n_clusters = n_clusters
