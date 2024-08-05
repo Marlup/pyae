@@ -95,7 +95,7 @@ class TrainingManager:
         self.tol = tol
         self.max_no_improvements = max_no_improvements
         self.checkpoint_frequency = checkpoint_frequency
-        if model_directory:
+        if model_directory == "":
             self.model_directory = "../data/models/checkpoints"
         else:
             self.model_directory = model_directory
