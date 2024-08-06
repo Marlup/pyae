@@ -292,7 +292,7 @@ def read_xarray_dataset(path, engine="netcdf4", drop_dups=False):
     #return data, columns, ns, data_vars
     return data, columns, data_vars
 
-def build_array(x, values, dim, main_feature="real", permutations=None, n_splits=0, add_noise_augmentation=False, add_minmax_augmentation=False, probabilities_to_positive=None, axis_min_max=-1, bound_to_positives=True, on_load_target=False, on_ids=False, final_reshape=None, on_squeeze_target=True):
+def build_array(x, values, dim, main_feature="real", clip_to_positive=True, permutations=None, n_splits=0, add_noise_augmentation=False, add_minmax_augmentation=False, probabilities_to_positive=None, axis_min_max=-1, bound_to_positives=True, on_load_target=False, on_ids=False, final_reshape=None, on_squeeze_target=True):
     """
     Builds an array of signals for processing.
 
@@ -301,6 +301,7 @@ def build_array(x, values, dim, main_feature="real", permutations=None, n_splits
         - values: Values of the specified dimension.
         - dim: Dimension along which to select values.
         - main_feature: Main feature to use.
+        - clip_to_positive: Whether to limit values to [0.0 inf).
         - permutations: Permutations to apply to the data.
         - n_splits: Number of splits to apply to the sequence.
         - add_noise_augmentation: Whether to add noise augmentation.
@@ -316,7 +317,12 @@ def build_array(x, values, dim, main_feature="real", permutations=None, n_splits
         Processed data signals and frequency encoding.
     """
     # Clip real impedance to positive values
-    data = x[main_feature].clip(0.0, None).sel({dim: values}).values
+    if clip_to_positive:
+        data = x[main_feature].clip(0.0, None)
+    else:
+        data = x[main_feature]
+
+    data = data.sel({dim: values}).values
     n_loads, n_sweeps, n_categories, n_steps = data.shape
 
     # Initialize list of augmentations
