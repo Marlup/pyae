@@ -278,7 +278,8 @@ class TrainingManager:
             # Clear output if required
             if epoch > 0 and epoch % self.n_display_reset == 0:
                 clear_output()
-        
+
+        self._save_state(epoch=self.epochs, epoch_loss=self.prev_loss, on_last_checkpoint=True)
         self.model.eval()
     
     @results_training_epoch
@@ -441,8 +442,12 @@ class TrainingManager:
             return True
         return False
 
-    def _save_state(self, epoch, loss):
-        model_name = f"model_checkpoint_epoch_{epoch}_at_{get_timestamp()}.pt"
+    def _save_state(self, epoch, loss, on_last_checkpoint=False):
+        if on_last_checkpoint:
+            last = "last_"
+        else:
+            last = ""
+        model_name = f"model_{last}checkpoint_epoch_{epoch}_at_{get_timestamp()}.pt"
         model_path = os.path.join(self.model_directory, model_name)
         
         torch.save(
