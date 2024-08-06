@@ -292,7 +292,7 @@ def read_xarray_dataset(path, engine="netcdf4", drop_dups=False):
     #return data, columns, ns, data_vars
     return data, columns, data_vars
 
-def build_array(x, values, dim, main_feature="real", permutations=None, n_splits=0, add_noise_augmentation=False, add_minmax_augmentation=False, probabilities_to_positive=None, axis_agg=-1, bound_to_positives=True, on_load_target=False, on_ids=False, final_reshape=None, on_squeeze_target=True):
+def build_array(x, values, dim, main_feature="real", permutations=None, n_splits=0, add_noise_augmentation=False, add_minmax_augmentation=False, probabilities_to_positive=None, axis_min_max=-1, bound_to_positives=True, on_load_target=False, on_ids=False, final_reshape=None, on_squeeze_target=True):
     """
     Builds an array of signals for processing.
 
@@ -306,7 +306,7 @@ def build_array(x, values, dim, main_feature="real", permutations=None, n_splits
         - add_noise_augmentation: Whether to add noise augmentation.
         - add_minmax_augmentation: Whether to add min-max augmentation.
         - probabilities_to_positive: Whether to add probabilities.
-        - axis_agg: Axis along which to aggregate the data.
+        - axis_min_max: Axis along which to apply reduction of the data.
         - bound_to_positives: Whether to clip negative values to positive.
         - on_load_target: Whether to return a target of integer labels.
         - on_load_target: Whether to return an array of IDs for each sample.
@@ -375,7 +375,7 @@ def build_array(x, values, dim, main_feature="real", permutations=None, n_splits
         augmented_data = np.transpose(augmented_data, axes=permutations)
         
     # Apply min-max normalization
-    augmented_data = min_max_scale(augmented_data, axis=-1)
+    augmented_data = min_max_scale(augmented_data, axis=axis_min_max)
     
     # cast to tensor
     augmented_data = torch.tensor(augmented_data, dtype=torch.float32)
