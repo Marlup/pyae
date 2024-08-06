@@ -279,7 +279,7 @@ class TrainingManager:
             if epoch > 0 and epoch % self.n_display_reset == 0:
                 clear_output()
 
-        self._save_state(epoch=self.epochs, epoch_loss=self.prev_loss, on_last_checkpoint=True)
+        self._save_state(epoch=self.epochs, loss=self.prev_loss, on_last_checkpoint=True)
         self.model.eval()
     
     @results_training_epoch
