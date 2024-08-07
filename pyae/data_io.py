@@ -374,7 +374,7 @@ def build_array(x, values, dim, main_feature="real", clip_to_positive=True, perm
         # Split the steps dim and spread the data along the new dim 'splits' and 'step' dim
         augmented_data = augmented_data.reshape(*shape_rest, n_splits, n_steps)
         # Transpose the dims so that 'split' dim is at 0 and the left ones are rolled 1 position to the right:
-        # Example: (samples 0, load 1, sensor 2, splits 3, step 4) ->  (splits 3, samples 0, load 1 , sensor 2, step 4)
+        # Example: (sample, load, sensor, splits, step) ->  (splits, samples, load, sensor, step)
         augmented_data = augmented_data.transpose(3, 0, 1, 2, 4)
     
     if permutations:
