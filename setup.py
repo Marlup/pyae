@@ -15,14 +15,14 @@ setup(
         "torch",
         "openpyxl",
         "numpy",
-        #"h5py",
+        "h5py",
         "xarray[complete]",
         "ipython",
         "kaleido",
-        #"netcdf4",
+        "netcdf4",
         "ffmpeg",
         "torchinfo",
-	    "torchsummary",
+	"torchsummary",
         "torchmetrics",
     ],  # List dependencies here if any
 )
