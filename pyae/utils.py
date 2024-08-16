@@ -143,7 +143,7 @@ def generate_frames(x, sequence, update_func, init_func, frame_rate=1000, x_lab=
 
 def make_gif(x, sequence, update_func, init_func, frame_rate=1000, gif_path="./new_gif.gif", root_path="./images", x_lab="x", y_lab="y", on_return_anim=False):
     # Make a sequential animation.
-    animation = generate_frames(x, sequence, update_func, frame_rate=frame_rate, x_lab=x_lab, y_lab=y_lab)
+    animation = generate_frames(x, sequence, init_func, update_func, frame_rate=frame_rate, x_lab=x_lab, y_lab=y_lab)
     
     # Save the animation as a gif: a movie file by drawing every frame.
     path = os.path.join(root_path, gif_path)
