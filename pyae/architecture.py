@@ -568,7 +568,7 @@ class ConvAutoencoderLatentFC1(AutoencoderLayerBuilder):
         # Decoder
         self.decoder = ConvDecoder(self.latent_output_channel, decoder_specs)
     
-    def forward(self, x, *x_categories=None):
+    def forward(self, x, *x_categories):
         x = self.encoder(x)
         x = self.latent(x)
         
