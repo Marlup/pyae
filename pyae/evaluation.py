@@ -222,7 +222,7 @@ def compute_losses_from_dataloader(training_manager, dataloader, losses, on_vae=
     training_manager.model.eval()
     losses_statistics = {}
 
-    for loss_name, loss_func in losses:
+    for loss_name, loss_func in losses.items():
         loss_statistics = get_loss_statistics(training_manager, dataloader, loss_func, on_vae=on_vae)
         losses_statistics.update({f"{loss_name}_{stat_name}": stat_value.item() for stat_name, stat_value in loss_statistics.items()})
     
