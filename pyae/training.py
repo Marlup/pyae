@@ -324,48 +324,48 @@ class TrainingManager:
     def _compute_batch_loss(self, batch, **kwargs):
         x, target = batch["x"], batch["y"]
         
-        if self.mode != "classification":
-            x_categories = batch.get("x_categories", None)
+        #if self.mode != "classification":
+        #    x_categories = batch.get("x_categories", None)
         
         if self.mode == "standard":
-            return self._compute_batch_loss_standard(x, x_categories, target, **kwargs)
+            return self._compute_batch_loss_standard(x, target, **kwargs)
         elif self.mode == "stack":
-            return self._compute_batch_loss_stack(x, x_categories, target, **kwargs)
+            return self._compute_batch_loss_stack(x, target, **kwargs)
         elif self.mode == "vae":
-            return self._compute_batch_loss_vae(x, x_categories, target, **kwargs)
+            return self._compute_batch_loss_vae(x, target, **kwargs)
         elif self.mode == "dcec":
-            return self._compute_batch_loss_dcec(x, x_categories, target, **kwargs)
+            return self._compute_batch_loss_dcec(x, target, **kwargs)
         elif self.mode == "classification":
             return self._compute_batch_classification(x, target, **kwargs)
         else:
             raise ValueError(f"Unsupported mode: {mode}")
     
-    def _compute_batch_loss_standard(self, x, x_categories, target, return_outputs=False):
-        outputs = self.model(x, x_categories)
+    def _compute_batch_loss_standard(self, x, target, return_outputs=False):
+        outputs = self.model(x)
         loss = self.criterion(outputs, target) 
         
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
         
-    def _compute_batch_loss_stack(self, x, x_categories, target, return_outputs=False):
-        outputs, target = self.model(x, x_categories)
+    def _compute_batch_loss_stack(self, x, target, return_outputs=False):
+        outputs, target = self.model(x)
         loss = self.criterion(outputs, target) 
         
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
         
-    def _compute_batch_loss_vae(self, x, x_categories, target, return_outputs=False):
-        outputs, mean, log_var = self.model(x, x_categories)
+    def _compute_batch_loss_vae(self, x, target, return_outputs=False):
+        outputs, mean, log_var = self.model(x)
         loss = self.criterion(outputs, target, mean, log_var)
         
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
     
-    def _compute_batch_loss_dcec(self, x, x_categories, target, return_outputs=False):
-        outputs, z, q_dist = self.model(x, x_categories)
+    def _compute_batch_loss_dcec(self, x, target, return_outputs=False):
+        outputs, z, q_dist = self.model(x)
         #on_update_p_target = self._should_update_p_target()
         #if on_update_p_target and \
         #  (self.p_target is None or (i % self.T == 0) or q_dist.shape != self.p_target.shape):
@@ -410,9 +410,9 @@ class TrainingManager:
         
         with torch.no_grad():
             for batch in dataloader:
-                x, x_categories = batch["x"], batch["x_categories"]
+                x = batch["x"]
                 
-                outputs = self.model(x, x_categories)
+                outputs = self.model(x)
                 
                 if index_select is None:
                     unbatched_outputs.append(outputs)

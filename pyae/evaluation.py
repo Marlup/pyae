@@ -115,10 +115,10 @@ Current batch_size is {dataloader.batch_size}")
         reconstruction = reconstruction.cpu().detach().squeeze()
         
         # Lower confidence interval band
-        lower_recon = models_ci[0](batch["x"], *x_categories).detach()
+        lower_recon = models_ci[0](batch["x"]).detach()
         lower_recon = lower_recon.cpu().detach().squeeze()
         # Upper confidence interval band
-        upper_recon = models_ci[1](batch["x"], *x_categories).detach()
+        upper_recon = models_ci[1](batch["x"]).detach()
         upper_recon = upper_recon.cpu().detach().squeeze()
         
         # Plot original and reconstruction signals with confidence intervals

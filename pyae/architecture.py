@@ -511,13 +511,13 @@ class ConvAutoencoderImplicit(AutoencoderLayerBuilder):
         # Decoder
         self.decoder = ConvDecoder(self.latent_output_channel, decoder_specs, on_transpose_conv=on_transpose_conv)
     
-    def forward(self, x, x_category=None):
+    def forward(self, x, *x_categories):
         x = self.encoder(x)
         
-        if self.n_categories > 0 and x_category is not None:
-            x_category_encoding = self.category_encoder(x_category)#.unsqueeze(1)
+        if self.n_categories > 0 and len(x_categories) > 0:
+            x_categories_encoding = self.category_encoder(x_categories)#.unsqueeze(1)
             
-            inputs_concat = [x, x_category_encoding]
+            inputs_concat = [x, x_categories_encoding]
             x = torch.cat(inputs_concat, dim=1)
             
         x = self.decoder(x)
@@ -568,14 +568,14 @@ class ConvAutoencoderLatentFC1(AutoencoderLayerBuilder):
         # Decoder
         self.decoder = ConvDecoder(self.latent_output_channel, decoder_specs)
     
-    def forward(self, x, x_category=None):
+    def forward(self, x, *x_categories=None):
         x = self.encoder(x)
         x = self.latent(x)
         
-        if self.n_categories > 0 and x_category is not None:
-            x_category_encoding = self.category_encoder(x_category)#.unsqueeze(1)
+        if self.n_categories > 0 and len(x_categories) > 0:
+            x_categories_encoding = self.category_encoder(x_categories)#.unsqueeze(1)
             
-            inputs_concat = [x, x_category_encoding]
+            inputs_concat = [x, x_categories_encoding]
             x = torch.cat(inputs_concat, dim=1)
             
         x = self.decoder(x)
