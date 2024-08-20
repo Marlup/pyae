@@ -95,14 +95,22 @@ class TrainingManager:
         self.tol = tol
         self.max_no_improvements = max_no_improvements
         self.checkpoint_frequency = checkpoint_frequency
-        if model_directory == "":
-            self.model_directory = "../data/models/checkpoints"
+        
+        if model_directory == "" or not os.mkdir(self.model_directory):
+            raise Exception("Error. Define the checkpoint directory for the training 'model_directory'.")
         else:
             self.model_directory = model_directory
+        
         self.T = T
         self.mode = mode
         self.n_clusters = n_clusters
         self.n_display_reset = n_display_reset
+
+        optim_params = self.optimizer.defaults
+        self.initial_lr = param_groups["lr"]
+        self.weight_decay = param_groups["weight_decay"]
+        self.step_size = self.lr_scheduler.step_size
+        self.gamma = self.lr_scheduler.gamma
 
         # Initialize dictionary to save default training parameters
         if mode == "dcec":
@@ -160,10 +168,10 @@ class TrainingManager:
         
         optimizer_default_params = self.optimizer.defaults
         
-        base_lr = self.postrain_config["base_lr"]
+        initial_lr = self.postrain_config["initial_lr"]
         weight_decay = self.postrain_config["weight_decay"]
         
-        optimizer = Adam(self.model.parameters(), lr=base_lr, weight_decay=weight_decay)
+        optimizer = Adam(self.model.parameters(), lr=initial_lr, weight_decay=weight_decay)
         self.optimizer = optimizer
         
         # Reset learning rate scheduler
@@ -172,7 +180,7 @@ class TrainingManager:
         
         last_lr = self.lr_scheduler.get_last_lr()
         
-        if base_lr > last_lr:
+        if initial_lr > last_lr:
             from torch.optim.lr_scheduler import StepLR
 
             step_size,  = self.postrain_config["lr_schedulder_step_size"], 
@@ -190,7 +198,7 @@ class TrainingManager:
         
         optimizer_defaults = self.optimizer.defaults
         self.postrain_config["weight_decay"] = optimizer_defaults.get("weight_decay", 0.0)
-        self.postrain_config["base_lr"] = optimizer_defaults.get("lr", 0.01)
+        self.postrain_config["initial_lr"] = optimizer_defaults.get("lr", 0.01)
         
         if self.lr_scheduler is not None:
             self.postrain_config["lr_scheduler_step_size"] = self.lr_scheduler.step_size
@@ -488,12 +496,12 @@ class TrainingManager:
     def plot_losses(self):
         if self.mode == "dcec":
             epochs = self.postrain_config["epochs"]
-            learning_rate = self.postrain_config["base_lr"]
+            learning_rate = self.postrain_config["initial_lr"]
             gamma = self.postrain_config["lr_scheduler_gamma"]
             step_size = self.postrain_config["lr_scheduler_step_size"]
         else:
             epochs = self.epochs
-            learning_rate = self.base_lr
+            learning_rate = self.initial_lr
             gamma = self.gamma
             step_size = self.step_size
             
@@ -504,7 +512,7 @@ class TrainingManager:
             learning_rate=learning_rate,
             gamma=gamma,
             step_size=step_size
-            )
+        )
 
     def report_model_evaluation(self, kind_plot="bar", figsize=(12, 8), on_return_dataframe=True):
         metrics_losses = []
