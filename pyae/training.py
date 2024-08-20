@@ -97,8 +97,10 @@ class TrainingManager:
         self.checkpoint_frequency = checkpoint_frequency
         
         if model_directory == "" or not os.mkdir(self.model_directory):
-            raise Exception("Error. Define the checkpoint directory for the training 'model_directory'.")
+            self.on_checkpoint = False
+            self.model_directory = ""
         else:
+            self.on_checkpoint = True
             self.model_directory = model_directory
         
         self.T = T
@@ -262,7 +264,7 @@ class TrainingManager:
             self.train_losses.append(epoch_loss)
 
             # Save model at checkpoint
-            if self.epochs % self.checkpoint_frequency == 0:
+            if self.on_checkpoint and self.epochs % self.checkpoint_frequency == 0:
                 self._save_state(epoch, epoch_loss)
             
             # Learning rate scheduler step
@@ -287,7 +289,8 @@ class TrainingManager:
             if epoch > 0 and epoch % self.n_display_reset == 0:
                 clear_output()
 
-        self._save_state(epoch=self.epochs, loss=self.prev_loss, on_last_checkpoint=True)
+        if self.on_checkpoint:
+            self._save_state(epoch=self.epochs, loss=self.prev_loss, on_last_checkpoint=True)
         self.model.eval()
     
     @results_training_epoch
