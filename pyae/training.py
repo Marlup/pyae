@@ -108,7 +108,7 @@ class TrainingManager:
         self.n_clusters = n_clusters
         self.n_display_reset = n_display_reset
 
-        optim_params = self.optimizer.defaults
+        param_groups = self.optimizer.defaults
         self.initial_lr = param_groups["lr"]
         self.weight_decay = param_groups["weight_decay"]
         self.step_size = self.lr_scheduler.step_size
