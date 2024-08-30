@@ -271,54 +271,18 @@ def get_loss_statistics(training_manager, dataloader, loss_func, on_vae=False):
         "iqr": losses.quantile(0.75) - losses.quantile(0.25)
     }
 
-def get_confusion_matrix(y, y_pred=None, X=None, model=None):
+def get_confusion_matrix(y_true, y_pred):
     from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-    
-    if y_pred is not None and (X is None and model is None):
-        on_model = False
-    else:
-        on_model = True
-    
-    y_true = y.cpu().detach().numpy()
-    if on_model:
-        y_pred = model(X).cpu().detach().numpy().argmax(-1)
-    
-    conf_matrix = confusion_matrix(y_true, y_pred)
-    
-    return conf_matrix, ConfusionMatrixDisplay.from_predictions(y_true, y_pred)
+    return confusion_matrix(y_true, y_pred), ConfusionMatrixDisplay.from_predictions(y_true, y_pred)
 
-def get_top_k_accuracy(y, y_pred=None, X=None, model=None, k=2):
+def get_top_k_accuracy(y_true, y_pred, k=2):
     from sklearn.metrics import top_k_accuracy_score
-    
-    if y_pred is not None and (X is None and model is None):
-        on_model = False
-    else:
-        on_model = True
-    
-    y_true = y.cpu().detach().numpy()
-    if on_model:
-        y_pred = model(X).cpu().detach().numpy().argmax(-1)
+    return top_k_accuracy_score(y_true, y_pred, k=k)
 
-    score = top_k_accuracy_score(y_true, y_pred, k=k)
-    return score
-
-def get_classification_report(y, y_pred=None, X=None, model=None):
+def get_classification_report(y_true, y_pred=None):
     from sklearn.metrics import classification_report
-    
-    if y_pred is not None and (X is None and model is None):
-        on_model = False
-    else:
-        on_model = True
-    
-    y_true = y.cpu().detach().numpy()
-    if on_model:
-        y_pred = model(X).cpu().detach().numpy().argmax(-1)
-        
-    report = classification_report(y_true, y_pred)    
-    return report
+    return classification_report(y_true, y_pred)
 
-def get_top_k_categories(X, model, k=2):
-    y_pred = model(X)
-    top_k_values, top_k_indices = torch.topk(y_pred, k, dim=-1)
-    
-    return top_k_values.cpu(), top_k_indices.cpu()
+def get_top_k_categories(y_pred, k=2, dim=-1):
+    top_k_values, top_k_indices = torch.topk(y_pred, k, dim=dim)
+    return top_k_values, top_k_indices
