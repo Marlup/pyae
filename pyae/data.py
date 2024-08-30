@@ -42,7 +42,7 @@ class EMIDataset(Dataset):
         return len(self.x)
 
 class EMIDatasetClassifier(Dataset):
-    def __init__(self, x, y, x_categories=None, ids=None, noise=0.0):
+    def __init__(self, x, y, x_categories=None, ids=None, noise=0.0, include_ids=True):
         self.x = x
         self.y = y
         self.x_categories = x_categories
@@ -52,6 +52,7 @@ class EMIDatasetClassifier(Dataset):
     def __getitem__(self, index):
         data_output = {}
 
+        # Get and add x tensor
         if self.noise > 0.0:
             x = self.x[index] + self.noise * rand_like(self.x[index])
         else:
@@ -59,18 +60,18 @@ class EMIDatasetClassifier(Dataset):
             
         data_output.update({"x": x})
         
+        # Get and add y tensor
         y = self.y[index]
-        
         data_output.update({"y": y})
         
+        # Get and add x_categories tensor
         if self.x_categories is not None:
             data_output.update({"x_categories": self.x_categories[index]})
-        
-        data_output.update({"y": y})
-    
-        if self.ids is not None:
+            
+        # Get and add ids tensor
+        if include_ids and self.ids is not None:
             data_output.update({"ids": self.ids[index]})
-        else:
+        elif include_ids:
             data_output.update({"ids": ()})
         
         return data_output
