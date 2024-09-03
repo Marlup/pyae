@@ -48,7 +48,7 @@ class EMIDatasetClassifier(Dataset):
         self.x_categories = x_categories
         self.ids = ids
         self.noise = noise
-    
+        self.include_ids = include_ids
     def __getitem__(self, index):
         data_output = {}
 
@@ -69,7 +69,7 @@ class EMIDatasetClassifier(Dataset):
             data_output.update({"x_categories": self.x_categories[index]})
             
         # Get and add ids tensor
-        if include_ids and self.ids is not None:
+        if self.include_ids and self.ids is not None:
             data_output.update({"ids": self.ids[index]})
         elif include_ids:
             data_output.update({"ids": ()})
