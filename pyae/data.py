@@ -71,7 +71,7 @@ class EMIDatasetClassifier(Dataset):
         # Get and add ids tensor
         if self.include_ids and self.ids is not None:
             data_output.update({"ids": self.ids[index]})
-        elif include_ids:
+        elif self.include_ids:
             data_output.update({"ids": ()})
         
         return data_output
