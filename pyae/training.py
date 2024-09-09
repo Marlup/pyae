@@ -81,7 +81,7 @@ class KFoldManager:
         *args_training_manager,
         **kwargs_training_manager
     ):
-        from sklearn.model_selection import GroupShuffleSplit
+        from sklearn.model_selection import StratifiedKFold
 
         self.model = model
         self.train_data = train_data
@@ -95,7 +95,7 @@ class KFoldManager:
         self.dataloader_config = dataloader_config
         self.cv = cv
 
-        self.splitter = GroupShuffleSplit(n_splits=cv, shuffle=True, random_state=RANDOM_STATE)
+        self.splitter = StratifiedKFold(n_splits=cv, shuffle=True, random_state=RANDOM_STATE)
         self.training_manager = TrainingManager(*args_training_manager, **kwargs_training_manager)
         self.save_training_state_dicts()
         self.kfold_data = {}
