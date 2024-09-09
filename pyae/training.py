@@ -3,6 +3,7 @@ from IPython.display import clear_output
 
 import torch
 from torch import nn
+from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
 import pandas as pd
@@ -13,6 +14,7 @@ from .constant import (
 )
 
 from pyae.evaluation import plot_reconstruction, compute_losses_from_dataloader
+from pyae.data import EMIDatasetClassifier
 from pyae.utils import get_timestamp
 
 ################## 
@@ -60,6 +62,119 @@ def results_evaluation_epoch(func):
         return results
     
     return wrapper
+
+class KFoldManager:
+    DEFAULT_BATCH_SIZE = 16
+    DEFAULT_DEVICE = "cpu"
+    DEFAULT_GENERATOR = torch.Generator(RANDOM_STATE)
+
+    def __init__(
+        self, 
+        model, 
+        train_data,
+        train_target,
+        eval_data,
+        eval_target,
+        groups,
+        dataloader_config,
+        cv=5,
+        *args_training_manager,
+        **kwargs_training_manager
+    ):
+        from sklearn.model_selection import GroupShuffleSplit
+
+        self.model = model
+        self.train_data = train_data
+        self.train_target = train_target
+        self.eval_data = eval_data
+        self.eval_target = eval_target
+        if groups is None:
+            self.groups = train_data
+        else:
+            self.groups = groups
+        self.dataloader_config = dataloader_config
+        self.cv = cv
+
+        self.splitter = GroupShuffleSplit(n_splits=cv, shuffle=True, random_state=RANDOM_STATE)
+        self.training_manager = TrainingManager(*args_training_manager, **kwargs_training_manager)
+        self.save_training_state_dicts()
+        self.kfold_data = {}
+        self.kfold_data["loss_function"] = str(self.training_manager.criterion)
+    
+    def _train_model_KFold(self):
+        data_indices = enumerate(self.splitter.split(self.train_data, self.train_target, self.groups))
+        
+        for cv_index, (train_indices, val_indices) in data_indices:
+            print(f"\nTraining on data fold number {cv_index + 1}")
+            
+            # Overwrite the dataloaders from splits of training and validation data.
+            self._prepare_dataloaders(
+                self.train_data[train_indices], 
+                self.train_target[val_indices], 
+                self.eval_data[train_indices], 
+                self.eval_target[val_indices]
+                )
+            
+            # Train on the data fold
+            self.training_manager.train_model()
+
+            # Save training results
+            self.kfold_data[cv_index] = {
+                "model": self.training_manager.model,
+                "train_losses": self.training_manager.train_losses,
+                "validation_losses": self.training_manager.eval_losses,
+                "validation_score": self.training_manager.evaluate_model()
+                }
+
+            # Reset model parameters like weights and biases.
+            self.reset_model_to_state_dict()
+    
+    def _prepare_dataloaders(self, x_train, y_train, x_val, y_val):
+        if not isinstance(x_train, torch.Tensor):
+            raise Exception(f"Data type error at _prepare_dataloaders(). x_train is not a Tensor")
+        if not isinstance(y_train, torch.Tensor):
+            raise Exception(f"Data type error at _prepare_dataloaders(). y_train is not a Tensor")
+        if not isinstance(x_val, torch.Tensor):
+            raise Exception(f"Data type error at _prepare_dataloaders(). x_val is not a Tensor")
+        if not isinstance(y_val, torch.Tensor):
+            raise Exception(f"Data type error at _prepare_dataloaders(). y_val is not a Tensor")
+
+        batch_size = self.dataloader_config.get("batch_size", self.DEFAULT_BATCH_SIZE)
+        device = self.dataloader_config.get("device", self.DEFAULT_DEVICE)
+        generator = self.dataloader_config.get("generator", self.DEFAULT_GENERATOR).to(device)
+        
+        self.train_loader = DataLoader(
+            EMIDatasetClassifier(x_train.to(device), y=y_train.to(device)),
+            batch_size=batch_size, 
+            shuffle=True,
+            generator=generator
+            )
+
+        self.eval_loader = DataLoader(
+            EMIDatasetClassifier(x_val.to(device), y=y_val.to(device)), 
+            batch_size=batch_size, 
+            shuffle=False
+        )
+    
+    def save_training_state_dicts(self):
+        self.init_model_state_dict = self.training_manager.model.state_dict()
+        self.init_optimizer_state_dict = self.training_manager.optimizer.state_dict()
+
+    def reset_training_to_state_dicts(self):
+        self.training_manager.model.load_state_dict(self.init_model_state_dict)
+        self.training_manager.optimizer.load_state_dict(self.init_optimizer_state_dict)
+    
+    def predict_from_folds(self, x):
+        return [fold["model"](x) for _, fold in self.kfold_data.items()]
+
+    def summarize_from_folds(self):
+        val_scores = [fold["validation_score"] for _, fold in self.kfold_data.items()]
+        mean_loss =  torch.mean(val_scores)
+        std_loss =  torch.std(val_scores)
+        median_loss =  torch.median(val_scores)
+        iqr_loss =  torch.quantile(val_scores, q=0.75) - torch.quantile(val_scores, q=0.25)
+
+        return mean_loss, std_loss, median_loss, iqr_loss
 
 class TrainingManager:
     def __init__(
@@ -349,7 +464,7 @@ class TrainingManager:
         elif self.mode == "classification":
             return self._compute_batch_classification(x, target, **kwargs)
         else:
-            raise ValueError(f"Unsupported mode: {mode}")
+            raise ValueError(f"Unsupported mode: {self.mode}")
     
     def _compute_batch_loss_standard(self, x, target, return_outputs=False):
         outputs = self.model(x)
@@ -484,16 +599,8 @@ class TrainingManager:
         
     def evaluate_model(self):
         self.model.eval()
-        eval_loss = 0.0
-        eval_losses = []
-        
-        with torch.no_grad():
-            for batch in self.eval_loader:
-                loss = self._eval_epoch()
-                eval_loss += loss
-                eval_losses.append(loss)
-        
-        avg_eval_loss = eval_loss / len(self.eval_loader.dataset)
+        avg_eval_loss = self._eval_epoch()
+
         return avg_eval_loss
 
     def plot_losses(self):
