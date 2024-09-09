@@ -111,8 +111,8 @@ class KFoldManager:
             self._prepare_dataloaders(
                 self.train_data[train_indices], 
                 self.train_target[val_indices], 
-                self.eval_data[train_indices], 
-                self.eval_target[val_indices]
+                self.train_data[train_indices], 
+                self.train_target[val_indices]
                 )
             
             # Train on the data fold
