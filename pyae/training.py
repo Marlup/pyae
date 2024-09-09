@@ -141,7 +141,7 @@ class KFoldManager:
 
         batch_size = self.dataloader_config.get("batch_size", self.DEFAULT_BATCH_SIZE)
         device = self.dataloader_config.get("device", self.DEFAULT_DEVICE)
-        generator = self.dataloader_config.get("generator", self.DEFAULT_GENERATOR).to(device)
+        generator = self.dataloader_config.get("generator", self.DEFAULT_GENERATOR)
         
         train_loader = DataLoader(
             EMIDatasetClassifier(x_train.to(device), y=y_train.to(device)),
