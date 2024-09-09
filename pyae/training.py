@@ -89,14 +89,14 @@ class KFoldManager:
         self.eval_data = eval_data
         self.eval_target = eval_target
         if groups is None:
-            self.groups = train_data
+            self.groups = train_target
         else:
             self.groups = groups
         self.dataloader_config = dataloader_config
         self.cv = cv
 
         self.splitter = StratifiedKFold(n_splits=cv, shuffle=True, random_state=RANDOM_STATE)
-        self.training_manager = TrainingManager(*args_training_manager, **kwargs_training_manager)
+        self.training_manager = TrainingManager(train_loader=None, *args_training_manager, **kwargs_training_manager)
         self.save_training_state_dicts()
         self.kfold_data = {}
         self.kfold_data["loss_function"] = str(self.training_manager.criterion)
@@ -108,12 +108,14 @@ class KFoldManager:
             print(f"\nTraining on data fold number {cv_index + 1}")
             
             # Overwrite the dataloaders from splits of training and validation data.
-            self._prepare_dataloaders(
+            train_loader, eval_loader = self._prepare_dataloaders(
                 self.train_data[train_indices], 
-                self.train_target[val_indices], 
-                self.train_data[train_indices], 
+                self.train_target[train_indices], 
+                self.train_data[val_indices], 
                 self.train_target[val_indices]
                 )
+            self.training_manager.train_loader = train_loader
+            self.training_manager.eval_loader = eval_loader
             
             # Train on the data fold
             self.training_manager.train_model()
@@ -127,7 +129,7 @@ class KFoldManager:
                 }
 
             # Reset model parameters like weights and biases.
-            self.reset_model_to_state_dict()
+            self.reset_training_parameters()
     
     def _prepare_dataloaders(self, x_train, y_train, x_val, y_val):
         if not isinstance(x_train, torch.Tensor):
@@ -143,34 +145,39 @@ class KFoldManager:
         device = self.dataloader_config.get("device", self.DEFAULT_DEVICE)
         generator = self.dataloader_config.get("generator", self.DEFAULT_GENERATOR).to(device)
         
-        self.train_loader = DataLoader(
+        train_loader = DataLoader(
             EMIDatasetClassifier(x_train.to(device), y=y_train.to(device)),
             batch_size=batch_size, 
             shuffle=True,
             generator=generator
             )
 
-        self.eval_loader = DataLoader(
+        eval_loader = DataLoader(
             EMIDatasetClassifier(x_val.to(device), y=y_val.to(device)), 
             batch_size=batch_size, 
             shuffle=False
         )
+
+        return train_loader, eval_loader
     
     def save_training_state_dicts(self):
         self.init_model_state_dict = self.training_manager.model.state_dict()
         self.init_optimizer_state_dict = self.training_manager.optimizer.state_dict()
         self.init_scheduler_state_dict = self.training_manager.lr_scheduler.state_dict()
 
-    def reset_training_to_state_dicts(self):
+    def reset_training_parameters(self):
         self.training_manager.model.load_state_dict(self.init_model_state_dict)
         self.training_manager.optimizer.load_state_dict(self.init_optimizer_state_dict)
         self.training_manager.lr_scheduler.load_state_dict(self.init_scheduler_state_dict)
-    
+        self.training_manager.train_losses = []
+        self.training_manager.eval_losses = []
+
     def predict_from_folds(self, x):
         return [fold["model"](x) for _, fold in self.kfold_data.items()]
 
     def summarize_from_folds(self):
         val_scores = [fold["validation_score"] for _, fold in self.kfold_data.items()]
+        
         mean_loss =  torch.mean(val_scores)
         std_loss =  torch.std(val_scores)
         median_loss =  torch.median(val_scores)
