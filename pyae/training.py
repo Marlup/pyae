@@ -159,10 +159,12 @@ class KFoldManager:
     def save_training_state_dicts(self):
         self.init_model_state_dict = self.training_manager.model.state_dict()
         self.init_optimizer_state_dict = self.training_manager.optimizer.state_dict()
+        self.init_scheduler_state_dict = self.training_manager.lr_scheduler.state_dict()
 
     def reset_training_to_state_dicts(self):
         self.training_manager.model.load_state_dict(self.init_model_state_dict)
         self.training_manager.optimizer.load_state_dict(self.init_optimizer_state_dict)
+        self.training_manager.lr_scheduler.load_state_dict(self.init_scheduler_state_dict)
     
     def predict_from_folds(self, x):
         return [fold["model"](x) for _, fold in self.kfold_data.items()]
@@ -281,8 +283,6 @@ class TrainingManager:
             self.model.freeze_clustering_parameters()
         
         # Reset optimizer
-        from torch.optim import Adam
-        
         optimizer_default_params = self.optimizer.defaults
         
         initial_lr = self.postrain_config["initial_lr"]
@@ -298,8 +298,6 @@ class TrainingManager:
         last_lr = self.lr_scheduler.get_last_lr()
         
         if initial_lr > last_lr:
-            from torch.optim.lr_scheduler import StepLR
-
             step_size,  = self.postrain_config["lr_schedulder_step_size"], 
             gamma = self.postrain_config["lr_scheduler_gamma"]
             
