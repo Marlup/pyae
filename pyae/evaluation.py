@@ -1,5 +1,31 @@
 import torch
 from matplotlib import pyplot as plt
+from architecture import AutoencoderLayerBuilder
+
+class EvaluationManager(AutoencoderLayerBuilder):
+    def __init__(
+        self, 
+        model, 
+        train_loader,
+        test_loader,
+        metrics,
+        mode="classification",
+        cv=1,
+
+    ):
+        self.model = model
+        self.train_loader = train_loader
+        self.test_loader = test_loader
+        self.metrics = metrics
+        self.mode = mode
+        self.cv = cv
+        
+        # Activated cross validation
+        if cv > 1:
+            self.kfold_models = []
+            self.kfold_train_losses = []
+            self.kfold_test_losses = []
+
 
 def plot_reconstruction(
     dataloader,
@@ -286,3 +312,168 @@ def get_classification_report(y_true, y_pred=None):
 def get_top_k_categories(y_pred, k=2, dim=-1):
     top_k_values, top_k_indices = torch.topk(y_pred, k, dim=dim)
     return top_k_values, top_k_indices
+
+def transform_prob_prediction(y_pred_prob, k, on_hard_prediction=True):
+    from numpy import ndarray, array
+    if not isinstance(y_pred_prob, ndarray):
+        y_pred_prob = array(y_pred_prob)
+    
+    if on_hard_prediction:
+        return y_pred_prob.argmax(axis=1)
+    else:
+        return y_pred_prob.argsort()[:, :-k-1:-1]
+
+def k_neighbors_confusion_matrix(y_test, y_pred):
+    from numpy import zeros_like, diag, eye
+    # Get standard confusion matrix
+    conf_matrix, _ = get_confusion_matrix(y_test, y_pred)
+    
+    # Extract the main diagonal from confusion matrix
+    main_diag = diag(conf_matrix)
+
+    # Extract lower triangle matrix
+    adjust_first_low_diag = zeros_like(main_diag)
+    adjust_first_low_diag[1:] = diag(conf_matrix, -1)
+
+    # Extract upper triangle matrix
+    adjust_first_up_diag = zeros_like(main_diag)
+    adjust_first_up_diag[:-1] = diag(conf_matrix, 1)
+
+    n = len(conf_matrix)
+    indices_first_up = eye(n, k=1, dtype=bool)
+    indices_first_low = eye(n, k=-1, dtype=bool)
+    indices_diag = eye(n, k=0, dtype=bool)
+
+    # Adjust the k + 1 diagonals of the confusion matrix
+    adjusted_conf_matrix = conf_matrix.copy()
+    adjusted_conf_matrix[indices_first_up] = 0
+    adjusted_conf_matrix[indices_first_low] = 0
+    adjusted_conf_matrix[indices_diag] += adjust_first_low_diag + adjust_first_up_diag
+    
+    return adjusted_conf_matrix
+
+def k_neighbors_classification_report_from_confusion_matrix(cf, opt_xlabel="load"):
+    from numpy import diag, arange
+
+    n = len(cf)
+
+    true_pos = diag(cf, 0)
+    false_neg = cf.sum(axis=1) - true_pos
+    false_pos = cf.sum(axis=0) - true_pos
+
+    print(f"True positives {true_pos}\nFalse negatives: {false_neg}\nFalse positives: {false_pos}")
+
+    precision = true_pos / (true_pos + false_pos)
+    recall = true_pos / (true_pos + false_neg)
+    f1_score = 2 * precision * recall /  (precision + recall)
+    x = 1.5 * arange(n)
+
+    plt.figure(figsize=(9, 6))
+    plt.bar(x, 100 * precision, align="center", width=0.25, label="precision (%)")
+    plt.bar(x + 0.25, 100 * recall, align="center", width=0.25, label="recall (%)")
+    plt.bar(x + 2 * 0.25, 100 * f1_score, align="center", width=0.25, label="f1 (%)")
+    plt.axhline(50, color="k", alpha=0.2, linestyle="--")
+    plt.axhline(70, color="k", alpha=0.6, linestyle="--")
+    plt.axhline(90, color="k", alpha=1.0, linestyle="--")
+
+    plt.xticks(x, arange(n))
+    plt.title("Evaluation on first-neighbor predictions")
+    plt.xlabel(f"class / {opt_xlabel}")
+    plt.ylabel("score")
+    plt.legend(fontsize="x-small")
+
+    return precision, recall, f1_score
+
+def ranker_loss(y_pred, y_test):
+    from torchmetrics import(
+        MeanAbsoluteError,
+        MeanSquaredError,
+        MeanAbsolutePercentageError,
+        ExplainedVariance,
+        R2Score
+    )
+    from numpy import mean, std, linspace
+
+    mae_metric = MeanAbsoluteError()
+    mrse_metric = MeanSquaredError(squared=False)
+    mape_metric = MeanAbsolutePercentageError()
+    ev_metric = ExplainedVariance(multioutput='raw_values')
+    r2_metric = R2Score()
+
+    mae_scores = [mae_metric(yp, yt).item() for yp, yt in zip(y_pred, y_test)]
+    mae_mean_scores = mean(mae_scores)
+    mae_std_scores = std(mae_scores)
+
+    mrse_scores = [mrse_metric(yp, yt).item() for yp, yt in zip(y_pred, y_test)]
+    mrse_mean_scores = mean(mrse_scores)
+    mrse_std_scores = std(mrse_scores)
+
+    mape_scores = [mape_metric(yp, yt).item() for yp, yt in zip(y_pred, y_test)]
+    mape_mean_scores = mean(mape_scores)
+    mape_std_scores = std(mape_scores)
+
+    print(f"Mean and std mae: {mae_mean_scores, mae_std_scores}")
+    print(f"Mean and std mrse: {mrse_mean_scores, mrse_std_scores}")
+    print(f"Mean and std mape: {mape_mean_scores, mape_std_scores}")
+    print(f"ExplainedVariance and std mape: {100 * ev_metric(y_pred, y_test)}")
+    print(f"R2Score: {100 * r2_metric(y_pred, y_test)}")
+
+    plt.figure(figsize=(8, 8))
+
+    # First row
+    plt.subplot(3, 3, 1)
+    _ = plt.boxplot([mae_scores], bootstrap=10000, meanline=True)
+    plt.title("MAE")
+
+    plt.subplot(3, 3, 2)
+    _ = plt.boxplot([mape_scores])
+    plt.title("MAPE")
+
+    plt.subplot(3, 3, 3)
+    _ = plt.boxplot([mrse_scores])
+    plt.title("MRSE")
+
+    # Second row
+    plt.subplot(3, 1, 2)
+    residuals = y_pred - y_test
+    _ = plt.plot(residuals, marker="o", linestyle="", markersize=1.5)
+    plt.axhline(0, color="k", linestyle="--", alpha=0.6)
+
+    plt.title("Scatter of residuals")
+    ticks = linspace(0, len(mape_scores), 10, dtype=int)
+    plt.xticks(ticks=ticks, labels=range(10))
+
+    # Third row
+    plt.subplot(3, 1, 3)
+    _ = plt.plot(mae_scores, marker="o", linestyle="", markersize=1.5)
+
+    plt.title("MAE scatter of mse")
+
+    plt.tight_layout()
+    
+    return mae_scores, mrse_scores, mape_scores
+
+def windowed_residuals(y, error_metric, window_size=30):
+    from numpy import array, arange
+    errors_windowed = array(y)[arange(len(y)).reshape(-1, window_size)]
+    errors_windowed_mean = errors_windowed.mean(axis=1)
+    errors_windowed_std = errors_windowed.std(axis=1)
+    n_windows = len(errors_windowed_mean)
+
+    # errors
+    plt.subplot(1, 1, 1)
+    plt.errorbar(x=range(n_windows),
+                 y=errors_windowed_mean,
+                 yerr=errors_windowed_std,
+                 fmt="-or",
+                 ecolor="k",
+                 markersize=4,
+                 linewidth=1,
+                 elinewidth=10
+                )
+    
+    plt.xlabel("window")
+    plt.ylabel(error_metric)
+    plt.title(f"Mean and std of {error_metric} for {n_windows} windows")
+    
+    plt.tight_layout()
