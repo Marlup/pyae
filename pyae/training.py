@@ -99,7 +99,7 @@ class KFoldManager:
         self.kfold_data = {}
         self.kfold_data["loss_function"] = str(self.training_manager.criterion)
     
-    def _train_model_KFold(self):
+    def kFold_train_model(self):
         data_indices = enumerate(self.splitter.split(self.train_data, self.train_target, self.groups))
         
         for cv_index, (train_indices, val_indices) in data_indices:
@@ -107,10 +107,10 @@ class KFoldManager:
             
             # Overwrite the dataloaders from splits of training and validation data.
             train_loader, eval_loader = self._prepare_dataloaders(
-                self.train_data[train_indices], 
-                self.train_target[train_indices], 
-                self.train_data[val_indices], 
-                self.train_target[val_indices]
+                torch.tensor(self.train_data[train_indices]), 
+                torch.tensor(self.train_target[train_indices]), 
+                torch.tensor(self.train_data[val_indices]), 
+                torch.tensor(self.train_target[val_indices])
                 )
             self.training_manager.train_loader = train_loader
             self.training_manager.eval_loader = eval_loader
