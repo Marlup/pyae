@@ -1,6 +1,6 @@
 import torch
 from matplotlib import pyplot as plt
-from architecture import AutoencoderLayerBuilder
+from pyae.architecture import AutoencoderLayerBuilder
 
 class EvaluationManager(AutoencoderLayerBuilder):
     def __init__(
