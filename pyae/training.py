@@ -70,7 +70,6 @@ class KFoldManager:
 
     def __init__(
         self, 
-        model, 
         train_data,
         train_target,
         eval_data,
@@ -83,7 +82,6 @@ class KFoldManager:
     ):
         from sklearn.model_selection import StratifiedKFold
 
-        self.model = model
         self.train_data = train_data
         self.train_target = train_target
         self.eval_data = eval_data
