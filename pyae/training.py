@@ -212,7 +212,7 @@ class TrainingManager:
         self.tol = tol
         self.max_no_improvements = max_no_improvements
         
-        if self.checkpoint_frequency < 1:
+        if checkpoint_frequency < 1:
             # Do only one checkpoint at the end of the training.
             self.checkpoint_frequency = epochs
         else:
