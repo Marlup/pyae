@@ -129,14 +129,6 @@ class KFoldManager:
             self.reset_training_parameters()
     
     def _prepare_dataloaders(self, x_train, y_train, x_val, y_val):
-        if not isinstance(x_train, torch.Tensor):
-            raise Exception(f"x_train is not a Tensor")
-        if not isinstance(y_train, torch.Tensor):
-            raise Exception(f"y_train is not a Tensor")
-        if not isinstance(x_val, torch.Tensor):
-            raise Exception(f"x_val is not a Tensor")
-        if not isinstance(y_val, torch.Tensor):
-            raise Exception(f"y_val is not a Tensor")
 
         batch_size = self.dataloader_config.get("batch_size", self.DEFAULT_BATCH_SIZE)
         device = self.dataloader_config.get("device", self.DEFAULT_DEVICE)
