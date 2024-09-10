@@ -143,8 +143,6 @@ def _extract_sheet_data(
     Returns:
         A double-nested list containing the values extracted from the sheet.
     """
-    if ws is None:
-        raise Exception("Input error. 'ws' is not defined.")
     data = []
     matrix_rows = []
     for row in ws.iter_rows(values_only=True):
@@ -283,13 +281,11 @@ def read_xarray_dataset(path, engine="netcdf4", drop_dups=False):
         data = data.sel(step=unique_steps)
     
     columns = list(data.sizes.keys())
-    #ns = list(data.sizes.values())
     data_vars = list(data.data_vars.keys())
     
     print(f"Shape of dimensions:\n\t{data.dims}")
     print(f"Shape of variables:\n\t{data.data_vars}")
 
-    #return data, columns, ns, data_vars
     return data, columns, data_vars
 
 def build_array(x, values, dim, main_feature="real", clip_to_positive=True, permutations=None, n_splits=0, add_noise_augmentation=False, add_minmax_augmentation=False, probabilities_to_positive=None, axis_min_max=-1, bound_to_positives=True, on_load_target=False, on_ids=False, final_reshape=None, on_squeeze_target=True):
@@ -323,7 +319,7 @@ def build_array(x, values, dim, main_feature="real", clip_to_positive=True, perm
         data = x[main_feature]
 
     data = data.sel({dim: values}).values
-    n_loads, n_sweeps, n_categories, n_steps = data.shape
+    *_, n_steps = data.shape
 
     # Initialize list of augmentations
     augmentations = []
@@ -347,7 +343,8 @@ def build_array(x, values, dim, main_feature="real", clip_to_positive=True, perm
         
         x_noise_aug = generate_noisy_signals(data)
         # Transpose dimension load and sweeps stack dims 0 and 1 (sweeps): 
-        # Before (examples, load, sweeps, categories, steps) 
+        # Before (examples, load, sweeps, categories, steps)
+        # TODO Fix error 'axes don't match array'
         x_noise_aug = x_noise_aug.transpose(0, 2, 1, 3, 4)
         
         examples_noise, examples_sweep, *shape_rest = x_noise_aug.shape

@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import xarray as xr
+from constant import RANDOM_STATE
 
 ############################
 #### Data preprocessing #### 
@@ -19,6 +20,7 @@ def generate_noisy_signals(x, amplitudes=None):
     Returns:
         ndarray: Array of noisy signals.
     """
+    rnd_generator = np.default_rng(RANDOM_STATE)
     if not isinstance(amplitudes, (float, np.ndarray, list, tuple, type(None))):
         raise Exception("'amplitudes' must be either an ndarray, list, tuple, float, or None.")
 
@@ -31,7 +33,7 @@ def generate_noisy_signals(x, amplitudes=None):
     
     noisy_signals = []
     for amplitude in amplitudes:
-        noisy_signals.append(x + amplitude * np.random.randn(*x.shape))
+        noisy_signals.append(x + amplitude * rnd_generator.randn(*x.shape))
 
     return np.vstack(noisy_signals)
 
@@ -110,8 +112,8 @@ def _generate_positive_variation(n_points, n_categories):
     Returns:
         ndarray: Matrix of positive variation ratios.
     """
-    rng = np.random.default_rng()
-    positive_variation_ratio = rng.uniform(
+    rnd_generator = np.random.default_rng(RANDOM_STATE)
+    positive_variation_ratio = rnd_generator.uniform(
         np.zeros((n_points,), dtype=np.float16),
         np.ones((n_points,), dtype=np.float16),
         size=(n_categories, n_points)
@@ -129,7 +131,7 @@ def _skew_to_positive_signal(size, probability_to_positive=0.5):
     Returns:
         ndarray: Vector with positive skewness.
     """
-    rng = np.random.default_rng()
+    rnd_generator = np.random.default_rng(RANDOM_STATE)
     
     if not isinstance(probability_to_positive, (float, )) \
     or \
@@ -137,11 +139,11 @@ def _skew_to_positive_signal(size, probability_to_positive=0.5):
         raise Exception("Parameter error. 'probability_to_positive' must be float type and within the range [0.0, 1.0], both included.")
     
     p = [1 - probability_to_positive, probability_to_positive]
-    return rng.choice([-1, 1], 
-                      size=size, 
-                      p=p, 
-                      replace=True) \
-              .astype(float)
+    return rnd_generator.choice([-1, 1], 
+                                size=size, 
+                                p=p, 
+                                replace=True) \
+                        .astype(float)
 
 def _generate_min_max(x, axis):
     """
