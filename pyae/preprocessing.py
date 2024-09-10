@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import xarray as xr
-from constant import RANDOM_STATE
+from .constant import RANDOM_STATE
 
 ############################
 #### Data preprocessing #### 

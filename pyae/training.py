@@ -168,10 +168,10 @@ class KFoldManager:
         except Exception as e:
             print(f"Error resetting training parameters: {e}")
 
-    def predict_from_folds(self, x):
+    def predict(self, x):
         return [value["model"](x) for _, value in self.training_log.items() if isinstance(value, dict)]
 
-    def summarize_from_folds(self):
+    def get_summary(self):
         val_scores = [value["validation_score"] for _, value in self.training_log.items() if isinstance(value, dict)]
         
         mean_loss =  torch.mean(val_scores)
