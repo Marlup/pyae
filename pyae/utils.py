@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 
 import torch
@@ -66,7 +67,6 @@ def _search_decoder_params(start_length, target_lengths, target_block, verbose=F
     params = []
     last_length = start_length
     target_params = (len(target_lengths) - 1) * target_block
-    #target_params = encoder_params
     
     if verbose:
         print(f"Targets: {target_lengths}")
@@ -111,12 +111,12 @@ def _search_decoder_params(start_length, target_lengths, target_block, verbose=F
 
     return params
 
-def _conv_transpose1d_output_length(L_in, kernel_size, stride=1, padding=0, output_padding=0, dilation=1):
+def _conv_transpose1d_output_length(length_in, kernel_size, stride=1, padding=0, output_padding=0, dilation=1):
     """
     Calculate the output length of a ConvTranspose1d layer.
 
     Parameters:
-    L_in (int): Length of the input.
+    length_in (int): Length of the input.
     kernel_size (int): Size of the convolving kernel.
     stride (int): Stride of the convolution. Default is 1.
     padding (int): Amount of padding added to both sides of the input. Default is 0.
@@ -126,8 +126,8 @@ def _conv_transpose1d_output_length(L_in, kernel_size, stride=1, padding=0, outp
     Returns:
     int: Calculated length of the output.
     """
-    L_out = (L_in - 1) * stride - 2 * padding + dilation * (kernel_size - 1) + output_padding + 1
-    return L_out
+    length_out = (length_in - 1) * stride - 2 * padding + dilation * (kernel_size - 1) + output_padding + 1
+    return length_out
 
 # Function to generate frames for the animation
 def generate_frames(x, sequence, update_func, init_func, frame_rate=1000, x_lab="x", y_lab="y", on_keep=False):
@@ -143,7 +143,7 @@ def generate_frames(x, sequence, update_func, init_func, frame_rate=1000, x_lab=
 
 def make_gif(x, sequence, update_func, init_func, frame_rate=1000, gif_path="./new_gif.gif", root_path="./images", x_lab="x", y_lab="y", on_return_anim=False):
     # Make a sequential animation.
-    animation = generate_frames(x, sequence, init_func, update_func, frame_rate=frame_rate, x_lab=x_lab, y_lab=y_lab)
+    anim = generate_frames(x, sequence, init_func, update_func, frame_rate=frame_rate, x_lab=x_lab, y_lab=y_lab)
     
     # Save the animation as a gif: a movie file by drawing every frame.
     path = os.path.join(root_path, gif_path)

@@ -95,8 +95,7 @@ class KFoldManager:
         self.splitter = StratifiedKFold(n_splits=cv, shuffle=True, random_state=RANDOM_STATE)
         self.training_manager = TrainingManager(train_loader=None, *args_training_manager, **kwargs_training_manager)
         self.save_training_state_dicts()
-        self.kfold_data = {}
-        self.kfold_data["loss_function"] = str(self.training_manager.criterion)
+        self.training_log = {}
     
     def k_fold_train_model(self):
         data_indices = enumerate(self.splitter.split(self.train_data, self.train_target, self.groups))
@@ -105,7 +104,7 @@ class KFoldManager:
             print(f"\nTraining on data fold number {cv_index + 1}")
             
             # Overwrite the dataloaders from splits of training and validation data.
-            train_loader, eval_loader = self._prepare_dataloaders(
+            train_loader, eval_loader = self._make_dataloaders(
                 self.train_data[train_indices], 
                 self.train_target[train_indices], 
                 self.train_data[val_indices], 
@@ -118,7 +117,7 @@ class KFoldManager:
             self.training_manager.train_model()
 
             # Save training results
-            self.kfold_data[cv_index] = {
+            self.training_log[cv_index] = {
                 "model": self.training_manager.model,
                 "train_losses": self.training_manager.train_losses,
                 "validation_losses": self.training_manager.eval_losses,
@@ -128,7 +127,7 @@ class KFoldManager:
             # Reset model parameters like weights and biases.
             self.reset_training_parameters()
     
-    def _prepare_dataloaders(self, x_train, y_train, x_val, y_val):
+    def _make_dataloaders(self, x_train, y_train, x_val, y_val):
 
         batch_size = self.dataloader_config.get("batch_size", self.DEFAULT_BATCH_SIZE)
         device = self.dataloader_config.get("device", self.DEFAULT_DEVICE)
@@ -154,22 +153,26 @@ class KFoldManager:
         return train_loader, eval_loader
     
     def save_training_state_dicts(self):
-        self.init_model_state_dict = self.training_manager.model.state_dict()
-        self.init_optimizer_state_dict = self.training_manager.optimizer.state_dict()
-        self.init_scheduler_state_dict = self.training_manager.lr_scheduler.state_dict()
+        from copy import deepcopy
+        self.init_model_state_dict = deepcopy(self.training_manager.model.state_dict())
+        self.init_optimizer_state_dict = deepcopy(self.training_manager.optimizer.state_dict())
+        self.init_scheduler_state_dict = deepcopy(self.training_manager.lr_scheduler.state_dict())
 
     def reset_training_parameters(self):
-        self.training_manager.model.load_state_dict(self.init_model_state_dict)
-        self.training_manager.optimizer.load_state_dict(self.init_optimizer_state_dict)
-        self.training_manager.lr_scheduler.load_state_dict(self.init_scheduler_state_dict)
-        self.training_manager.train_losses = []
-        self.training_manager.eval_losses = []
+        try:
+            self.training_manager.model.load_state_dict(self.init_model_state_dict)
+            self.training_manager.optimizer.load_state_dict(self.init_optimizer_state_dict)
+            self.training_manager.lr_scheduler.load_state_dict(self.init_scheduler_state_dict)
+            self.training_manager.train_losses = []
+            self.training_manager.eval_losses = []
+        except Exception as e:
+            print(f"Error resetting training parameters: {e}")
 
     def predict_from_folds(self, x):
-        return [fold["model"](x) for _, fold in self.kfold_data.items()]
+        return [value["model"](x) for _, value in self.training_log.items() if isinstance(value, dict)]
 
     def summarize_from_folds(self):
-        val_scores = [fold["validation_score"] for _, fold in self.kfold_data.items()]
+        val_scores = [value["validation_score"] for _, value in self.training_log.items() if isinstance(value, dict)]
         
         mean_loss =  torch.mean(val_scores)
         std_loss =  torch.std(val_scores)

@@ -51,7 +51,7 @@ def plot_reconstruction(
         suptitle (str, optional): Title of the figure. Default is "Reconstruction of signals".
     """
     if dataloader.batch_size > 1:
-        raise Exception(f"Argument error. 'dataloader' batch_size should be 1. \
+        raise Exception(f"Argument error. batch_size should be 1. \
 Current batch_size is {dataloader.batch_size}")
 
     # Set model to evaluation mode
@@ -60,7 +60,7 @@ Current batch_size is {dataloader.batch_size}")
     # Make subplots
     n_rows = n_reconstructions // n_columns
     figsize = (width, height_per_row * n_rows)
-    fig, axes = plt.subplots(n_reconstructions // n_columns,
+    _, axes = plt.subplots(n_reconstructions // n_columns,
                              n_columns,
                              figsize=figsize)
     # Make axes a 1d-array for ease of use
@@ -74,7 +74,7 @@ Current batch_size is {dataloader.batch_size}")
         deviation, reconstruction = training_manager._compute_batch_loss(batch, return_outputs=True)
 
         # Plot original and reconstructed signals
-        axes[i].plot(batch["y"].cpu().detach().numpy().squeeze(), label=f"Original", color="blue")
+        axes[i].plot(batch["y"].cpu().detach().numpy().squeeze(), label="Original", color="blue")
         axes[i].plot(reconstruction.cpu().detach().numpy().squeeze(), label="Predicted", color="green")
 
         # Setup labels, title and embellishments
@@ -117,7 +117,7 @@ def plot_ci_reconstruction(
         suptitle (str, optional): Title of the figure. Default is "Reconstruction of signals".
     """
     if dataloader.batch_size > 1:
-        raise Exception(f"Argument error. 'dataloader' batch_size should be 1. \
+        raise Exception(f"Argument error. batch_size should be 1. \
 Current batch_size is {dataloader.batch_size}")
     
     # Set model to evaluation mode

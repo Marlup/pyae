@@ -852,7 +852,7 @@ class EnsembleLatentFC3(AutoencoderLayerBuilder):
         # pre-latent to latent block
         # Deleted to use latent layer as output
         #prelatent_to_latent_specifications = [self.latent_length, *layer_specifications[2]]
-        prelatent_to_latent_specifications = [self.latent_length, *layer_specifications]
+        #prelatent_to_latent_specifications = [self.latent_length, *layer_specifications]
         self.add_fc_layer(concat_to_latent_specifications)
         
         # Latent blocks
