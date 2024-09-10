@@ -192,7 +192,7 @@ class TrainingManager:
         epochs=10, 
         tol=4e-5,
         max_no_improvements=5,
-        checkpoint_frequency=5,
+        checkpoint_frequency=-1,
         model_directory="",
         T=10, 
         mode="standard",
@@ -211,7 +211,12 @@ class TrainingManager:
         self.epochs = epochs
         self.tol = tol
         self.max_no_improvements = max_no_improvements
-        self.checkpoint_frequency = checkpoint_frequency
+        
+        if self.checkpoint_frequency < 1:
+            # Do only one checkpoint at the end of the training.
+            self.checkpoint_frequency = epochs
+        else:
+            self.checkpoint_frequency = checkpoint_frequency
         
         if model_directory == "" or not os.mkdir(self.model_directory):
             self.on_checkpoint = False
@@ -374,7 +379,8 @@ class TrainingManager:
             self.train_losses.append(epoch_loss)
 
             # Save model at checkpoint
-            if self.on_checkpoint and self.epochs % self.checkpoint_frequency == 0:
+            can_checkpoint = self.on_checkpoint and (self.epochs > 0) and (self.epochs % self.checkpoint_frequency == 0)
+            if self.on_checkpoint and can_checkpoint:
                 self._save_state(epoch, epoch_loss)
             
             # Learning rate scheduler step
