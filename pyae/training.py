@@ -106,10 +106,10 @@ class KFoldManager:
             
             # Overwrite the dataloaders from splits of training and validation data.
             train_loader, eval_loader = self._prepare_dataloaders(
-                torch.tensor(self.train_data[train_indices]), 
-                torch.tensor(self.train_target[train_indices]), 
-                torch.tensor(self.train_data[val_indices]), 
-                torch.tensor(self.train_target[val_indices])
+                self.train_data[train_indices], 
+                self.train_target[train_indices], 
+                self.train_data[val_indices], 
+                self.train_target[val_indices]
                 )
             self.training_manager.train_loader = train_loader
             self.training_manager.eval_loader = eval_loader
@@ -143,14 +143,18 @@ class KFoldManager:
         generator = self.dataloader_config.get("generator", self.DEFAULT_GENERATOR)
         
         train_loader = DataLoader(
-            EMIDatasetClassifier(x_train.to(device), y=y_train.to(device)),
+            EMIDatasetClassifier(x=torch.tensor(x_train, device=device, dtype=torch.float32), 
+                                 y=torch.tensor(y_train, device=device, dtype=torch.float32)
+                                 ),
             batch_size=batch_size, 
             shuffle=True,
             generator=generator
             )
 
         eval_loader = DataLoader(
-            EMIDatasetClassifier(x_val.to(device), y=y_val.to(device)), 
+            EMIDatasetClassifier(x=torch.tensor(x_val, device=device, dtype=torch.float), 
+                                 y=torch.tensor(y_val, device=device, dtype=torch.float)
+                                 ),
             batch_size=batch_size, 
             shuffle=False
         )
