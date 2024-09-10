@@ -32,7 +32,6 @@ def results_training_epoch(func):
         function: The wrapper function.
     """
     def wrapper(*args, **kwargs):
-        #optimizer = args[2]  # Assuming optimizer is always the third argument
         self = args[0]
         results = func(*args, **kwargs)
         
@@ -66,7 +65,7 @@ def results_evaluation_epoch(func):
 class KFoldManager:
     DEFAULT_BATCH_SIZE = 16
     DEFAULT_DEVICE = "cpu"
-    DEFAULT_GENERATOR = torch.Generator(RANDOM_STATE)
+    DEFAULT_GENERATOR = torch.Generator("cpu")
 
     def __init__(
         self, 
@@ -99,7 +98,7 @@ class KFoldManager:
         self.kfold_data = {}
         self.kfold_data["loss_function"] = str(self.training_manager.criterion)
     
-    def kFold_train_model(self):
+    def k_fold_train_model(self):
         data_indices = enumerate(self.splitter.split(self.train_data, self.train_target, self.groups))
         
         for cv_index, (train_indices, val_indices) in data_indices:
@@ -131,13 +130,13 @@ class KFoldManager:
     
     def _prepare_dataloaders(self, x_train, y_train, x_val, y_val):
         if not isinstance(x_train, torch.Tensor):
-            raise Exception(f"Data type error at _prepare_dataloaders(). x_train is not a Tensor")
+            raise Exception(f"x_train is not a Tensor")
         if not isinstance(y_train, torch.Tensor):
-            raise Exception(f"Data type error at _prepare_dataloaders(). y_train is not a Tensor")
+            raise Exception(f"y_train is not a Tensor")
         if not isinstance(x_val, torch.Tensor):
-            raise Exception(f"Data type error at _prepare_dataloaders(). x_val is not a Tensor")
+            raise Exception(f"x_val is not a Tensor")
         if not isinstance(y_val, torch.Tensor):
-            raise Exception(f"Data type error at _prepare_dataloaders(). y_val is not a Tensor")
+            raise Exception(f"y_val is not a Tensor")
 
         batch_size = self.dataloader_config.get("batch_size", self.DEFAULT_BATCH_SIZE)
         device = self.dataloader_config.get("device", self.DEFAULT_DEVICE)
@@ -248,7 +247,6 @@ class TrainingManager:
 
     def early_stopper(func):
         def wrapper(*args, **kwargs):
-            #optimizer = args[2]  # Assuming optimizer is always the third argument
             self = args[0]
             results = func(*args, **kwargs)
             
@@ -287,9 +285,7 @@ class TrainingManager:
             # Freeze clustering parameters
             self.model.freeze_clustering_parameters()
         
-        # Reset optimizer
-        optimizer_default_params = self.optimizer.defaults
-        
+        # Reset optimizer        
         initial_lr = self.postrain_config["initial_lr"]
         weight_decay = self.postrain_config["weight_decay"]
         
@@ -453,13 +449,10 @@ class TrainingManager:
     def _compute_batch_loss(self, batch, **kwargs):
         x, target = batch["x"], batch["y"]
         
-        #if self.mode != "classification":
-        #    x_categories = batch.get("x_categories", None)
-        
-        if self.mode == "standard":
+        if self.mode in ("standard", "classification"):
             return self._compute_batch_loss_standard(x, target, **kwargs)
         elif self.mode == "stack":
-            return self._compute_batch_loss_stack(x, target, **kwargs)
+            return self._compute_batch_loss_stack(x, **kwargs)
         elif self.mode == "vae":
             return self._compute_batch_loss_vae(x, target, **kwargs)
         elif self.mode == "dcec":
@@ -477,7 +470,7 @@ class TrainingManager:
             return loss.cpu(), outputs.cpu()
         return loss
         
-    def _compute_batch_loss_stack(self, x, target, return_outputs=False):
+    def _compute_batch_loss_stack(self, x, return_outputs=False):
         outputs, target = self.model(x)
         loss = self.criterion(outputs, target) 
         
@@ -495,20 +488,7 @@ class TrainingManager:
     
     def _compute_batch_loss_dcec(self, x, target, return_outputs=False):
         outputs, z, q_dist = self.model(x)
-        #on_update_p_target = self._should_update_p_target()
-        #if on_update_p_target and \
-        #  (self.p_target is None or (i % self.T == 0) or q_dist.shape != self.p_target.shape):
-        #    self._update_p_target()
         loss = self.criterion(outputs, target, q_dist, self.p_target)
-        
-        if return_outputs:
-            return loss.cpu(), outputs.cpu()
-        return loss
-    
-    def _compute_batch_classification(self, x, target, return_outputs=False):
-        outputs = self.model(x)
-        
-        loss = self.criterion(outputs, target)
         
         if return_outputs:
             return loss.cpu(), outputs.cpu()
