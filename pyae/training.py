@@ -171,8 +171,8 @@ class KFoldManager:
     def predict(self, x):
         return [value["model"](x) for _, value in self.training_log.items()]
 
-    def get_summary(self):
-        val_scores = torch.tensor([value["validation_score"] for _, value in self.training_log.items()])
+    def get_summary(self, n_warmup_points=10):
+        val_scores = torch.tensor([log["validation_score"][n_warmup_points:] for _, log in self.training_log.items()])
 
         mean_loss =  torch.mean(val_scores).item()
         std_loss =  torch.std(val_scores).item()
@@ -221,7 +221,7 @@ class TrainingManager:
             self.checkpoint_frequency = epochs
         else:
             self.checkpoint_frequency = checkpoint_frequency
-        
+
         if model_checkpoint_directory == "":
             self.on_model_checkpoint = False
         else:
