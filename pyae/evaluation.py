@@ -26,7 +26,6 @@ class EvaluationManager(AutoencoderLayerBuilder):
             self.kfold_train_losses = []
             self.kfold_test_losses = []
 
-
 def plot_reconstruction(
     dataloader,
     training_manager,

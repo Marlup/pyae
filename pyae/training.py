@@ -169,15 +169,15 @@ class KFoldManager:
             print(f"Error resetting training parameters: {e}")
 
     def predict(self, x):
-        return [value["model"](x) for _, value in self.training_log.items() if isinstance(value, dict)]
+        return [value["model"](x) for _, value in self.training_log.items()]
 
     def get_summary(self):
-        val_scores = [value["validation_score"] for _, value in self.training_log.items() if isinstance(value, dict)]
-        
-        mean_loss =  torch.mean(val_scores)
-        std_loss =  torch.std(val_scores)
-        median_loss =  torch.median(val_scores)
-        iqr_loss =  torch.quantile(val_scores, q=0.75) - torch.quantile(val_scores, q=0.25)
+        val_scores = torch.tensor([value["validation_score"] for _, value in self.training_log.items()])
+
+        mean_loss =  torch.mean(val_scores).item()
+        std_loss =  torch.std(val_scores).item()
+        median_loss =  torch.median(val_scores).item()
+        iqr_loss = (torch.quantile(val_scores, q=0.75) - torch.quantile(val_scores, q=0.25)).item()
 
         return mean_loss, std_loss, median_loss, iqr_loss
 
@@ -196,7 +196,7 @@ class TrainingManager:
         tol=4e-5,
         max_no_improvements=5,
         checkpoint_frequency=-1,
-        model_directory="",
+        model_checkpoint_directory="",
         T=10, 
         mode="standard",
         n_clusters=0, 
@@ -215,18 +215,20 @@ class TrainingManager:
         self.tol = tol
         self.max_no_improvements = max_no_improvements
         
+        # Checkpoints configuration
         if checkpoint_frequency < 1:
-            # Do only one checkpoint at the end of the training.
+            # Do only one checkpoint at the end of the last epoch.
             self.checkpoint_frequency = epochs
         else:
             self.checkpoint_frequency = checkpoint_frequency
         
-        if model_directory == "" or not os.mkdir(self.model_directory):
-            self.on_checkpoint = False
-            self.model_directory = ""
+        if model_checkpoint_directory == "":
+            self.on_model_checkpoint = False
         else:
-            self.on_checkpoint = True
-            self.model_directory = model_directory
+            os.makedirs(model_checkpoint_directory, exist_ok=True)
+            self.on_model_checkpoint = True
+        
+        self.model_checkpoint_directory = model_checkpoint_directory
         
         self.T = T
         self.mode = mode
@@ -382,8 +384,8 @@ class TrainingManager:
             self.train_losses.append(epoch_loss)
 
             # Save model at checkpoint
-            can_checkpoint = self.on_checkpoint and (self.epochs > 0) and (self.epochs % self.checkpoint_frequency == 0)
-            if self.on_checkpoint and can_checkpoint:
+            can_model_checkpoint = self.on_model_checkpoint and (self.epochs > 0) and (self.epochs % self.checkpoint_frequency == 0)
+            if self.on_model_checkpoint and can_model_checkpoint:
                 self._save_state(epoch, epoch_loss)
             
             # Learning rate scheduler step
@@ -408,8 +410,8 @@ class TrainingManager:
             if epoch > 0 and epoch % self.n_display_reset == 0:
                 clear_output()
 
-        if self.on_checkpoint:
-            self._save_state(epoch=self.epochs, loss=self.prev_loss, on_last_checkpoint=True)
+        if self.on_model_checkpoint:
+            self._save_state(epoch=self.epochs, loss=self.prev_loss, on_last_model_checkpoint=True)
         self.model.eval()
     
     @results_training_epoch
@@ -556,13 +558,13 @@ class TrainingManager:
             return True
         return False
 
-    def _save_state(self, epoch, loss, on_last_checkpoint=False):
-        if on_last_checkpoint:
-            last = "last_"
+    def _save_state(self, epoch, loss, on_last_model_checkpoint=False):
+        if on_last_model_checkpoint:
+            last = "_last_"
         else:
-            last = ""
-        model_name = f"model_{last}checkpoint_epoch_{epoch}_at_{get_timestamp()}.pt"
-        model_path = os.path.join(self.model_directory, model_name)
+            last = "_"
+        model_name = f"model{last}checkpoint_epoch_{epoch}_at_{get_timestamp()}.pt"
+        model_path = os.path.join(self.model_checkpoint_directory, model_name)
         
         torch.save(
             {
@@ -575,7 +577,7 @@ class TrainingManager:
         )
 
     def _load_state(self, model_name, on_eval=True):
-        model_path = os.path.join(self.model_directory, model_name)
+        model_path = os.path.join(self.model_checkpoint_directory, model_name)
         checkpoint = torch.load(model_path)
         
         self.model.load_state_dict(checkpoint['model_state_dict'])
