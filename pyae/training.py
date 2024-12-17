@@ -465,12 +465,9 @@ class TrainingManager:
             raise ValueError(f"Unsupported mode: {self.mode}")
 
     def _compute_forward_loss_standard(self, batch, return_outputs=False):
-        x, target = batch["x"], batch["y"]
+        target = batch["y"]
 
-        if "x_category" in batch:
-            outputs = self.model(x, batch["x_category"])
-        else:
-            outputs = self.model(x)
+        outputs = self.model(batch)
 
         loss = self.criterion(outputs, target)
         
@@ -479,9 +476,7 @@ class TrainingManager:
         return loss
     
     def _compute_forward_loss_stack(self, batch, return_outputs=False):
-        x = batch["x"]
-
-        outputs, target = self.model(x)
+        outputs, target = self.model(batch)
         loss = self.criterion(outputs, target) 
         
         if return_outputs:
@@ -489,9 +484,9 @@ class TrainingManager:
         return loss
     
     def _compute_forward_loss_vae(self, batch, return_outputs=False):
-        x, target = batch["x"], batch["y"]
+        target = batch["y"]
 
-        outputs, mean, log_var = self.model(x)
+        outputs, mean, log_var = self.model(batch)
         loss = self.criterion(outputs, target, mean, log_var)
         
         if return_outputs:
@@ -499,9 +494,9 @@ class TrainingManager:
         return loss
     
     def _compute_forward_loss_dcec(self, batch, return_outputs=False):
-        x, target = batch["x"], batch["y"]
+        target = batch["y"]
 
-        outputs, z, q_dist = self.model(x)
+        outputs, z, q_dist = self.model(batch)
         loss = self.criterion(outputs, target, q_dist, self.p_target)
         
         if return_outputs:
