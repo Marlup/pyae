@@ -42,13 +42,13 @@ class EMIDataset(Dataset):
         return len(self.x)
 
 class EMIDatasetClassifier(Dataset):
-    def __init__(self, x, y, x_categories=None, ids=None, noise=0.0):
+    def __init__(self, x, y, x_category=None, ids=None, noise=0.0):
         self.x = x
         self.y = y
         if len(self.x) != len(self.y):
             raise ValueError("x and y must have the same length.")
         
-        self.x_categories = x_categories
+        self.x_category = x_category
         self.ids = ids
         self.noise = noise
     
@@ -65,9 +65,9 @@ class EMIDatasetClassifier(Dataset):
             "y": self.y[index]
             }
         
-        # Add x_categories tensor
-        if self.x_categories is not None:
-            data_output["x_categories"] = self.x_categories[index]
+        # Add x_category tensor
+        if self.x_category is not None:
+            data_output["x_category"] = self.x_category[index]
         
         # Add IDs tensor
         data_output["ids"] = self.ids[index] if self.ids is not None else tensor([])
