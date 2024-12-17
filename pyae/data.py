@@ -1,5 +1,5 @@
 from torch.utils.data import Dataset
-from torch import rand_like
+from torch import rand_like, tensor
 
 class EMIDataset(Dataset):
     def __init__(self, x, x_categories=None, ids=None, target_feature_index=0, noise=0.0):
@@ -34,7 +34,7 @@ class EMIDataset(Dataset):
         if self.ids is not None:
             data_output.update({"ids": self.ids[index]})
         else:
-            data_output.update({"ids": ()})
+            data_output.update({"ids": tensor([])})
         
         return data_output
     
