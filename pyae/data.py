@@ -42,37 +42,35 @@ class EMIDataset(Dataset):
         return len(self.x)
 
 class EMIDatasetClassifier(Dataset):
-    def __init__(self, x, y, x_categories=None, ids=None, noise=0.0, include_ids=True):
+    def __init__(self, x, y, x_categories=None, ids=None, noise=0.0):
         self.x = x
         self.y = y
+        if len(self.x) != len(self.y):
+            raise ValueError("x and y must have the same length.")
+        
         self.x_categories = x_categories
         self.ids = ids
         self.noise = noise
-        self.include_ids = include_ids
+    
     def __getitem__(self, index):
-        data_output = {}
 
-        # Get and add x tensor
+        # Add x tensor
         if self.noise > 0.0:
             x = self.x[index] + self.noise * rand_like(self.x[index])
         else:
             x = self.x[index]
-            
-        data_output.update({"x": x})
         
-        # Get and add y tensor
-        y = self.y[index]
-        data_output.update({"y": y})
+        data_output = {
+            "x": x,
+            "y": self.y[index]
+            }
         
-        # Get and add x_categories tensor
+        # Add x_categories tensor
         if self.x_categories is not None:
-            data_output.update({"x_categories": self.x_categories[index]})
-            
-        # Get and add ids tensor
-        if self.include_ids and self.ids is not None:
-            data_output.update({"ids": self.ids[index]})
-        elif self.include_ids:
-            data_output.update({"ids": ()})
+            data_output["x_categories"] = self.x_categories[index]
+        
+        # Add IDs tensor
+        data_output["ids"] = self.ids[index] if self.ids is not None else None
         
         return data_output
     
