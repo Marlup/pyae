@@ -66,8 +66,7 @@ class EMIDatasetClassifier(Dataset):
             }
         
         # Add x_category tensor
-        if self.x_category is not None:
-            data_output["x_category"] = self.x_category[index]
+        data_output["x_category"] = self.x_category[index] if self.x_category is not None else tensor([])
         
         # Add IDs tensor
         data_output["ids"] = self.ids[index] if self.ids is not None else tensor([])

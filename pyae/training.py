@@ -452,51 +452,46 @@ class TrainingManager:
         return epoch_loss / len(self.eval_loader.dataset)
 
     def _compute_forward_loss(self, batch):
+        x, y = batch["x"], batch["y"]
         
         if self.mode in ("standard", "classification"):
-            return self._compute_forward_loss_standard(batch)
+            x_cat = batch["x_category"]
+            return self._compute_forward_loss_standard(x, x_cat, y)
         elif self.mode == "stack":
-            return self._compute_forward_loss_stack(batch)
+            return self._compute_forward_loss_stack(x, y)
         elif self.mode == "vae":
-            return self._compute_forward_loss_vae(batch)
+            return self._compute_forward_loss_vae(x, y)
         elif self.mode == "dcec":
-            return self._compute_forward_loss_dcec(batch)
+            return self._compute_forward_loss_dcec(x, y)
         else:
             raise ValueError(f"Unsupported mode: {self.mode}")
 
-    def _compute_forward_loss_standard(self, batch, return_outputs=False):
-        target = batch["y"]
-
-        outputs = self.model(batch)
-
+    def _compute_forward_loss_standard(self, x, x_cat, target, return_outputs=False):
+        outputs = self.model(x, x_cat)
         loss = self.criterion(outputs, target)
         
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
     
-    def _compute_forward_loss_stack(self, batch, return_outputs=False):
-        outputs, target = self.model(batch)
-        loss = self.criterion(outputs, target) 
+    def _compute_forward_loss_stack(self, x, target, return_outputs=False):
+        outputs, target = self.model(x)
+        loss = self.criterion(outputs, target)
         
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
     
-    def _compute_forward_loss_vae(self, batch, return_outputs=False):
-        target = batch["y"]
-
-        outputs, mean, log_var = self.model(batch)
+    def _compute_forward_loss_vae(self, x, target, return_outputs=False):
+        outputs, mean, log_var = self.model(x)
         loss = self.criterion(outputs, target, mean, log_var)
         
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
     
-    def _compute_forward_loss_dcec(self, batch, return_outputs=False):
-        target = batch["y"]
-
-        outputs, z, q_dist = self.model(batch)
+    def _compute_forward_loss_dcec(self, x, target, return_outputs=False):
+        outputs, z, q_dist = self.model(x)
         loss = self.criterion(outputs, target, q_dist, self.p_target)
         
         if return_outputs:
