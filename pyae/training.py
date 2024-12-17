@@ -171,8 +171,8 @@ class KFoldManager:
     def predict(self, x):
         return [value["model"](x) for _, value in self.training_log.items()]
 
-    def get_summary(self, n_warmup_points=10):
-        val_scores = torch.tensor([log["validation_score"][n_warmup_points:] for _, log in self.training_log.items()])
+    def get_summary(self):
+        val_scores = torch.tensor([log["validation_score"] for _, log in self.training_log.items()])
 
         mean_loss =  torch.mean(val_scores).item()
         std_loss =  torch.std(val_scores).item()
@@ -424,12 +424,12 @@ class TrainingManager:
         if self._should_update_p_target():
             self._update_p_target()
         
-        for i, batch in enumerate(self.train_loader):
+        for batch in self.train_loader:
             # Reset gradients for a new batch
             self.optimizer.zero_grad()
             
             # Compute forward step and loss
-            loss = self._compute_batch_loss(batch)
+            loss = self._compute_forward_loss(batch)
             
             # Compute backpropagation
             self._compute_graph_gradients(loss)
@@ -448,44 +448,51 @@ class TrainingManager:
         
         with torch.no_grad():
             for batch in self.eval_loader:
-                loss = self._compute_batch_loss(batch)
+                loss = self._compute_forward_loss(batch)
                 epoch_loss += loss.item()
         
         return epoch_loss / len(self.eval_loader.dataset)
 
-    def _compute_batch_loss(self, batch, **kwargs):
-        x, target = batch["x"], batch["y"]
+    def _compute_forward_loss(self, batch):
         
         if self.mode in ("standard", "classification"):
-            return self._compute_batch_loss_standard(x, target, **kwargs)
+            return self._compute_forward_loss_standard(batch)
         elif self.mode == "stack":
-            return self._compute_batch_loss_stack(x, **kwargs)
+            return self._compute_forward_loss_stack(batch)
         elif self.mode == "vae":
-            return self._compute_batch_loss_vae(x, target, **kwargs)
+            return self._compute_forward_loss_vae(batch)
         elif self.mode == "dcec":
-            return self._compute_batch_loss_dcec(x, target, **kwargs)
-        elif self.mode == "classification":
-            return self._compute_batch_classification(x, target, **kwargs)
+            return self._compute_forward_loss_dcec(batch)
         else:
             raise ValueError(f"Unsupported mode: {self.mode}")
-    
-    def _compute_batch_loss_standard(self, x, target, return_outputs=False):
-        outputs = self.model(x)
-        loss = self.criterion(outputs, target) 
+
+    def _compute_forward_loss_standard(self, batch, return_outputs=False):
+        x, target = batch["x"], batch["y"]
+
+        if "x_category" in batch:
+            outputs = self.model(x, batch["x_category"])
+        else:
+            outputs = self.model(x)
+
+        loss = self.criterion(outputs, target)
         
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
-        
-    def _compute_batch_loss_stack(self, x, return_outputs=False):
+    
+    def _compute_forward_loss_stack(self, batch, return_outputs=False):
+        x = batch["x"]
+
         outputs, target = self.model(x)
         loss = self.criterion(outputs, target) 
         
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
-        
-    def _compute_batch_loss_vae(self, x, target, return_outputs=False):
+    
+    def _compute_forward_loss_vae(self, batch, return_outputs=False):
+        x, target = batch["x"], batch["y"]
+
         outputs, mean, log_var = self.model(x)
         loss = self.criterion(outputs, target, mean, log_var)
         
@@ -493,7 +500,9 @@ class TrainingManager:
             return loss.cpu(), outputs.cpu()
         return loss
     
-    def _compute_batch_loss_dcec(self, x, target, return_outputs=False):
+    def _compute_forward_loss_dcec(self, batch, return_outputs=False):
+        x, target = batch["x"], batch["y"]
+
         outputs, z, q_dist = self.model(x)
         loss = self.criterion(outputs, target, q_dist, self.p_target)
         
@@ -503,7 +512,7 @@ class TrainingManager:
     
     def _compute_graph_gradients(self, loss):
         loss.backward()
-        
+    
     def _update_parameters(self):
         self.optimizer.step()
     
@@ -586,7 +595,7 @@ class TrainingManager:
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         
         return checkpoint.get("epoch", None), checkpoint.get("loss", None)
-        
+    
     def evaluate_model(self):
         self.model.eval()
         avg_eval_loss = self._eval_epoch()
