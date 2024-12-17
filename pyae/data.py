@@ -53,7 +53,7 @@ class EMIDatasetClassifier(Dataset):
         self.noise = noise
     
     def __getitem__(self, index):
-
+        
         # Add x tensor
         if self.noise > 0.0:
             x = self.x[index] + self.noise * rand_like(self.x[index])
@@ -70,7 +70,7 @@ class EMIDatasetClassifier(Dataset):
             data_output["x_categories"] = self.x_categories[index]
         
         # Add IDs tensor
-        data_output["ids"] = self.ids[index] if self.ids is not None else None
+        data_output["ids"] = self.ids[index] if self.ids is not None else tensor([])
         
         return data_output
     

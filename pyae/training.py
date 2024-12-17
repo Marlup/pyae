@@ -311,8 +311,6 @@ class TrainingManager:
             self.lr_scheduler = StepLR(self.optimizer, step_size=step_size, gamma=gamma)
 
     def _set_default_postrain_config(self, config):
-        #if not isinstance(postrain_config, dict) or not postrain_config:
-
         # Setup default postrain configuration
         self.postrain_config = {}
         
@@ -391,7 +389,7 @@ class TrainingManager:
             # Learning rate scheduler step
             if self.lr_scheduler:
                 self.lr_scheduler.step()
-                
+            
             # Evaluate one epoch
             # Run one step of early_stopping
             if self.eval_loader is not None:
