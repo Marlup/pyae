@@ -430,7 +430,7 @@ class TrainingManager:
             loss = self._compute_forward_loss(batch)
             
             # Compute backpropagation
-            self._compute_graph_gradients(loss)
+            loss.backward()
             
             # Update weights and parameters
             self._update_parameters()
@@ -497,9 +497,6 @@ class TrainingManager:
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
-    
-    def _compute_graph_gradients(self, loss):
-        loss.backward()
     
     def _update_parameters(self):
         self.optimizer.step()
