@@ -20,7 +20,7 @@ def generate_noisy_signals(x, amplitudes=None):
     Returns:
         ndarray: Array of noisy signals.
     """
-    rnd_generator = np.default_rng(RANDOM_STATE)
+    rnd_generator = np.random.default_rng(RANDOM_STATE)
     if not isinstance(amplitudes, (float, np.ndarray, list, tuple, type(None))):
         raise Exception("'amplitudes' must be either an ndarray, list, tuple, float, or None.")
 
@@ -33,9 +33,13 @@ def generate_noisy_signals(x, amplitudes=None):
     
     noisy_signals = []
     for amplitude in amplitudes:
-        noisy_signals.append(x + amplitude * rnd_generator.randn(*x.shape))
-
-    return np.vstack(noisy_signals)
+        noisy_signals.append(
+            x + amplitude * rnd_generator.normal(size=x.shape)
+        )
+    
+    noisy_signals = np.hstack(noisy_signals)
+    
+    return noisy_signals
 
 def generate_synthetic_signal(x, probabilities_to_positive=None, axis=-3, return_array=True):
     """
@@ -97,7 +101,7 @@ def generate_synthetic_signal(x, probabilities_to_positive=None, axis=-3, return
         # Store the new signal
         synthetic_signals.append(synthetic_signal)
 
-    synthetic_signals = np.array(synthetic_signals)
+    synthetic_signals = np.array(synthetic_signals).transpose(1, 0, 2, 3)
     
     return synthetic_signals
 

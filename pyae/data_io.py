@@ -288,7 +288,23 @@ def read_xarray_dataset(path, engine="netcdf4", drop_dups=False):
 
     return data, columns, data_vars
 
-def build_array(x, values, dim, main_feature="real", clip_to_positive=True, permutations=None, n_splits=0, add_noise_augmentation=False, add_minmax_augmentation=False, probabilities_to_positive=None, axis_min_max=-1, bound_to_positives=True, on_load_target=False, on_ids=False, final_reshape=None, on_squeeze_target=True):
+def build_xarray_array(
+    x, 
+    values,
+    dim,
+    main_feature="real",
+    clip_to_positive=True,
+    permutations=None,
+    n_splits=0,
+    add_noise_augmentation=False,
+    add_minmax_augmentation=False,
+    probabilities_to_positive=None,
+    axis_min_max=-1,
+    on_load_target=False,
+    on_ids=False,
+    final_reshape=None,
+    on_squeeze_target=True
+    ):
     """
     Builds an array of signals for processing.
 
@@ -362,48 +378,155 @@ def build_array(x, values, dim, main_feature="real", clip_to_positive=True, perm
     print("\nShape of the original data (after 0 (load) and 1 (sweeps) dims transposition)):", data.shape)
 
     # Stack first dimension of original and augmentations data
-    augmented_data = np.vstack([data, *augmentations])
+    augmented_x = np.vstack([data, *augmentations])
 
     if n_splits > 0:
         # Modify steps that the sequence is splitted in 9 ranges mixed within signal axis (axis=0)
         n_steps =  n_steps // n_splits
-        *shape_rest, _ = augmented_data.shape
+        *shape_rest, _ = augmented_x.shape
         # Split the steps dim and spread the data along the new dim 'splits' and 'step' dim
-        augmented_data = augmented_data.reshape(*shape_rest, n_splits, n_steps)
+        augmented_x = augmented_x.reshape(*shape_rest, n_splits, n_steps)
         # Transpose the dims so that 'split' dim is at 0 and the left ones are rolled 1 position to the right:
         # Example: (sample, load, sensor, splits, step) ->  (splits, samples, load, sensor, step)
-        augmented_data = augmented_data.transpose(3, 0, 1, 2, 4)
+        augmented_x = augmented_x.transpose(3, 0, 1, 2, 4)
     
     if permutations:
-        augmented_data = np.transpose(augmented_data, axes=permutations)
+        augmented_x = np.transpose(augmented_x, axes=permutations)
         
     # Apply min-max normalization
-    augmented_data = min_max_scale(augmented_data, axis=axis_min_max)
+    augmented_x = min_max_scale(augmented_x, axis=axis_min_max)
     
     # cast to tensor
-    augmented_data = torch.tensor(augmented_data, dtype=torch.float32)
+    augmented_x = torch.tensor(augmented_x, dtype=torch.float32)
     
     if on_load_target:
-        target = make_target_load(augmented_data, on_squeeze_target=on_squeeze_target)
+        target = make_target_load(augmented_x, on_squeeze_target=on_squeeze_target)
         
     if on_ids:
-        ids = make_signal_ids(augmented_data)
+        ids = make_signal_ids(augmented_x)
 
     # Reshape to 2D tensor (samples/signals, step)
     if final_reshape is not None:
-        augmented_data = augmented_data.reshape(final_reshape)
+        augmented_x = augmented_x.reshape(final_reshape)
     
-    print("\nShape of the augmented data:", augmented_data.shape)
+    print("\nShape of the augmented data:", augmented_x.shape)
 
     # Return options
     if on_load_target and on_ids:
-        return augmented_data, target, ids
+        return augmented_x, target, ids
     elif on_load_target:
-        return augmented_data, target
+        return augmented_x, target
     elif on_ids:
-        return augmented_data, ids
+        return augmented_x, ids
     else:
-        return augmented_data
+        return augmented_x
+
+def build_ndarray(
+        x, 
+        values, 
+        dim, 
+        clip_to_positive=True, 
+        permutations=None, 
+        n_splits=0, 
+        add_noise_augmentation=False,
+        add_minmax_augmentation=False, 
+        probabilities_to_positive=None,
+        axis_min_max=-1, 
+        on_load_target=False,
+        on_ids=False, 
+        on_squeeze_target=True
+        ):
+    """
+    Builds a Numpy array of signals for processing.
+
+    Parameters:
+        - x: Dataset containing the impedance data (samples, sweeps, categories (sensors), steps).
+        - values: Values of the specified dimension.
+        - dim: Dimension along which to select values.
+        - clip_to_positive: Whether to limit values to [0.0 inf).
+        - permutations: Permutations to apply to the data.
+        - n_splits: Number of splits to apply to the sequence.
+        - add_noise_augmentation: Whether to add noise augmentation.
+        - add_minmax_augmentation: Whether to add min-max augmentation.
+        - probabilities_to_positive: Whether to add probabilities.
+        - axis_min_max: Axis along which to apply reduction of the data.
+        - on_load_target: Whether to return a target of integer labels.
+        - on_load_target: Whether to return an array of IDs for each sample.
+
+    Returns:
+        Processed data signals and frequency encoding.
+    """
+
+    # Clip real impedance to positive values
+    if clip_to_positive:
+        x = x.clip(0.0, None)
+
+    x = np.take(x, values, dim)
+
+    *_, n_steps = x.shape
+
+    # Initialize list of augmentations
+    augmentations = []
+
+    # Apply min-max augmentation before normalization
+    if add_minmax_augmentation:
+        print(f"\nRunning min-max augmentation, probs {probabilities_to_positive}:")
+        print("\tShape of input data", x.shape)
+        
+        x_minmax_aug = generate_synthetic_signal(
+            x, 
+            probabilities_to_positive
+        )
+        augmentations.append(x_minmax_aug)
+        
+        print("\tShape of output data:", x_minmax_aug.shape)
+
+    # Apply white noise augmentation after normalization
+    if add_noise_augmentation:
+        print("\nRunning noise augmentation:")
+        print("\tShape of input data:", x.shape)
+        
+        x_noise_aug = generate_noisy_signals(x)
+        
+        print("\tShape of output data:", x_noise_aug.shape)
+        augmentations.append(x_noise_aug)
+        
+    # Stack first dimension of original and augmentations data
+    augmented_x = np.hstack([x, *augmentations])
+
+    if n_splits > 0:
+        # Modify steps that the sequence is splitted in 9 ranges mixed within signal axis (axis=0)
+        n_steps =  n_steps // n_splits
+        *shape_rest, _ = augmented_x.shape
+        # Split the steps dim and spread the data along the new dim 'splits' and 'step' dim
+        augmented_x = augmented_x.reshape(*shape_rest, n_splits, n_steps)
+        # Transpose the dims so that 'split' dim is at 0 and the left ones are rolled 1 position to the right:
+        # Example: (sample, load, sensor, sensors, step) ->  (splits, samples, load, sensor, step)
+        augmented_x = augmented_x.transpose(3, 0, 1, 2, 4)
+
+    if permutations:
+        augmented_x = np.transpose(augmented_x, axes=permutations)
+        
+    # Apply min-max normalization
+    augmented_x = min_max_scale(augmented_x, axis=axis_min_max)
+
+    if on_load_target:
+        target = make_target_load(augmented_x, on_squeeze_target=on_squeeze_target)
+        
+    if on_ids:
+        ids = make_signal_ids(augmented_x)
+
+    print("\nShape of the augmented data:", augmented_x.shape)
+
+    # Return options
+    if on_load_target and on_ids:
+        return augmented_x, target, ids
+    elif on_load_target:
+        return augmented_x, target
+    elif on_ids:
+        return augmented_x, ids
+    else:
+        return augmented_x
     
 def make_target_load(data, on_squeeze_target=True):
     """
@@ -413,23 +536,24 @@ def make_target_load(data, on_squeeze_target=True):
         - data (ndarray, (*sample, load, sensor, step)): Number of loads in the dataset.
         
     Returns:
-        1D torch tensor.
+        1D ndarray.
     """
     
     # Skip dim 'load' to compute the number of examples
     *rest, n_loads, n_sensors, n_steps = data.shape
     n_examples = np.prod(rest) * n_sensors
     
-    target_load = torch.tensor(
-        np.repeat([x for x in range(n_loads)], repeats=n_examples), 
-        dtype=torch.int32
-    )
+    target_load = np.repeat(
+        [x for x in range(n_loads)], 
+        repeats=n_examples
+        ) \
+                    .astype(np.int32)
 
     if on_squeeze_target:
-        return target_load.squeeze().to(torch.int64)
+        return target_load.squeeze()
     
     # Reshape from (n) to (n, 1) and assign proper dtype
-    return target_load.unsqueeze(-1).to(torch.int64)
+    return np.expand_dims(target_load, axis=-1)
 
 def make_one_hot_encoding(labels, n_categories=None):
     """
@@ -445,10 +569,10 @@ def make_one_hot_encoding(labels, n_categories=None):
     return oh_matrix
 
 def test_make_one_hot(oh, labels):
-    positions_dummy = oh_matrix.argmax(axis=1)
+    positions_dummy = oh.argmax(axis=1)
     return (positions_dummy == labels.squeeze()).all()
 
-def make_signal_ids(data, names=None):
+def make_signal_ids(data):
     """
     Builds a Tensor of categories which serves as id for each signal.
 
@@ -463,19 +587,18 @@ def make_signal_ids(data, names=None):
     from itertools import product
     import pandas as pd
     
-    if names is None:
-        names = ["split", "load", "sensor"]
-
     *shape_rest, n_loads, n_sensors, n_steps = data.shape
     load_vector = np.arange(n_loads)
     sensor_vector = np.arange(n_sensors)
     
     if len(shape_rest) > 1:
+        names = ["split", "load", "sensor"]
         n_splits, n_examples = shape_rest
         split_vector = np.arange(n_splits)
         
         base_combinations = product(split_vector, load_vector, sensor_vector)
     else:
+        names = ["load", "sensor"]
         n_examples = np.prod(shape_rest)
 
         base_combinations = product(load_vector, sensor_vector)
