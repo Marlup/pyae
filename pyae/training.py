@@ -430,7 +430,7 @@ class TrainingManager:
             loss = self._compute_forward_loss(batch)
             
             # Compute backpropagation
-            self._compute_graph_gradients(loss)
+            loss.backward()
             
             # Update weights and parameters
             self._update_parameters()
@@ -451,18 +451,18 @@ class TrainingManager:
         
         return epoch_loss / len(self.eval_loader.dataset)
 
-    def _compute_forward_loss(self, batch):
+    def _compute_forward_loss(self, batch, return_outputs=False):
         x, y = batch["x"], batch["y"]
         
         if self.mode in ("standard", "classification"):
-            x_cat = batch["x_category"]
-            return self._compute_forward_loss_standard(x, x_cat, y)
+            x_cat = batch.get("x_category", None)
+            return self._compute_forward_loss_standard(x, x_cat, y, return_outputs)
         elif self.mode == "stack":
-            return self._compute_forward_loss_stack(x, y)
+            return self._compute_forward_loss_stack(x, y, return_outputs)
         elif self.mode == "vae":
-            return self._compute_forward_loss_vae(x, y)
+            return self._compute_forward_loss_vae(x, y, return_outputs)
         elif self.mode == "dcec":
-            return self._compute_forward_loss_dcec(x, y)
+            return self._compute_forward_loss_dcec(x, y, return_outputs)
         else:
             raise ValueError(f"Unsupported mode: {self.mode}")
 
@@ -497,9 +497,6 @@ class TrainingManager:
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
-    
-    def _compute_graph_gradients(self, loss):
-        loss.backward()
     
     def _update_parameters(self):
         self.optimizer.step()

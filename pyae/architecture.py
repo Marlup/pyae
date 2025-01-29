@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 ##################################
 #### NN architecture modeling ####
@@ -340,7 +341,7 @@ class CategoricalEncoder(AutoencoderLayerBuilder):
     def forward(self, x):
         x = self.layers(x)
         if self.is_conv:
-            x = x.unsqueeze(1)
+            return x.unsqueeze(1)
         return x
 
 class FullyConnectedEncoder(AutoencoderLayerBuilder):
@@ -444,8 +445,7 @@ class ConvEncoder(AutoencoderLayerBuilder):
             self.layers.append(self.add_adaptive_pooling("max", 1))
     
     def forward(self, x):
-        x = self.layers(x)
-        return x
+        return self.layers(x)
 
 class ConvDecoder(AutoencoderLayerBuilder):
     """
@@ -520,8 +520,7 @@ class ConvAutoencoderImplicit(AutoencoderLayerBuilder):
             inputs_concat = [x, x_categories_encoding]
             x = torch.cat(inputs_concat, dim=1)
             
-        x = self.decoder(x)
-        return x
+        return self.decoder(x)
 
     def get_encoder_output_length(self, input_shape):
         from pyae.utils import get_decoder_target_lengths
@@ -578,8 +577,7 @@ class ConvAutoencoderLatentFC1(AutoencoderLayerBuilder):
             inputs_concat = [x, x_categories_encoding]
             x = torch.cat(inputs_concat, dim=1)
             
-        x = self.decoder(x)
-        return x
+        return self.decoder(x)
 
     def get_encoder_output_length(self, input_shape):
         from pyae.utils import get_decoder_target_lengths
@@ -937,9 +935,9 @@ class ClusteringLayer(AutoencoderLayerBuilder):
             )
         )
         # Apply the Student's t-distribution
-        q_raw = 1.0 / (1.0 + mse_loss)
+        q_unnorm = 1.0 / (1.0 + mse_loss)
         # Normalize the distribution
-        q = q_raw / q_raw.sum(dim=1).unsqueeze(1)
+        q = q_unnorm / q_unnorm.sum(dim=1).unsqueeze(1)
         return q
 
     def initialize_weights(self, weights=None):
@@ -949,122 +947,170 @@ class ClusteringLayer(AutoencoderLayerBuilder):
         else:
             self.cluster_weights = nn.Parameter(weights, requires_grad=True)
 
-class BottleneckBlock(nn.Module):
-    def __init__(self, in_channels, filters, stride=1):
-        super(BottleneckBlock, self).__init__()
-        filter1, filter2, filter3 = filters
-        
-        self.conv1 = nn.Conv1d(in_channels, filter1, kernel_length=1, stride=stride, padding=0)
-        self.bn1 = nn.BatchNorm1d(filter1)
-        
-        self.conv2 = nn.Conv1d(filter1, filter2, kernel_length=3, stride=1, padding=1)
-        self.bn2 = nn.BatchNorm1d(filter2)
-        
-        self.conv3 = nn.Conv1d(filter2, filter3, kernel_length=1, stride=1, padding=0)
-        self.bn3 = nn.BatchNorm1d(filter3)
-        
-        self.shortcut = nn.Sequential()
-        if stride != 1 or in_channels != filter3:
-            self.shortcut = nn.Sequential(
-                nn.Conv1d(in_channels, filter3, kernel_length=1, stride=stride, padding=0),
-                nn.BatchNorm1d(filter3)
-            )
-    
-    def forward(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = F.relu(self.bn2(self.conv2(out)))
-        out = self.bn3(self.conv3(out))
-        out += self.shortcut(x)
-        out = F.relu(out)
-        return out
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
 class InceptionBlock1D(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, branch_channels=64):
         super(InceptionBlock1D, self).__init__()
         
         # Branch 1: 1x1 Convolution
-        self.branch1x1 = nn.Conv1d(in_channels, out_channels, kernel_size=1)
+        self.branch1x1 = nn.Sequential(
+            nn.Conv1d(in_channels, out_channels, kernel_size=1),
+            nn.ReLU()
+        )
         
         # Branch 2: 1x1 Convolution followed by 3x3 Convolution
-        self.branch3x3_1 = nn.Conv1d(in_channels, out_channels // 2, kernel_size=1)
-        self.branch3x3_2 = nn.Conv1d(out_channels // 2, out_channels, kernel_size=3, padding=1)
+        self.branch3x3 = nn.Sequential(
+            nn.Conv1d(in_channels, branch_channels, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv1d(branch_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU()
+        )
         
         # Branch 3: 1x1 Convolution followed by two 3x3 Convolutions (approximating 5x5)
-        self.branch5x5_1 = nn.Conv1d(in_channels, out_channels // 2, kernel_size=1)
-        self.branch5x5_2 = nn.Conv1d(out_channels // 2, out_channels // 2, kernel_size=3, padding=1)
-        self.branch5x5_3 = nn.Conv1d(out_channels // 2, out_channels, kernel_size=3, padding=1)
+        self.branch5x5 = nn.Sequential(
+            nn.Conv1d(in_channels, branch_channels, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv1d(branch_channels, branch_channels, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(branch_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU()
+        )
         
         # Branch 4: 1x1 Convolution followed by three 3x3 Convolutions (approximating 7x7)
-        self.branch7x7_1 = nn.Conv1d(in_channels, out_channels // 2, kernel_size=1)
-        self.branch7x7_2 = nn.Conv1d(out_channels // 2, out_channels // 2, kernel_size=3, padding=1)
-        self.branch7x7_3 = nn.Conv1d(out_channels // 2, out_channels // 2, kernel_size=3, padding=1)
-        self.branch7x7_4 = nn.Conv1d(out_channels // 2, out_channels, kernel_size=3, padding=1)
+        self.branch7x7 = nn.Sequential(
+            nn.Conv1d(in_channels, branch_channels, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv1d(branch_channels, branch_channels, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(branch_channels, branch_channels, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(branch_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU()
+        )
         
         # Branch 5: 3x3 Max pooling followed by 1x1 Convolution
-        self.branch_pool = nn.MaxPool1d(kernel_size=3, stride=1, padding=1)
-        self.branch_pool_conv = nn.Conv1d(in_channels, out_channels, kernel_size=1)
+        self.branch_pool = nn.Sequential(
+            nn.MaxPool1d(kernel_size=3, stride=1, padding=1),
+            nn.Conv1d(in_channels, out_channels, kernel_size=1),
+            nn.ReLU()
+        )
         
     def forward(self, x):
         branch1x1 = self.branch1x1(x)
-        
-        branch3x3 = self.branch3x3_1(x)
-        branch3x3 = F.relu(self.branch3x3_2(branch3x3))
-        
-        branch5x5 = self.branch5x5_1(x)
-        branch5x5 = F.relu(self.branch5x5_2(branch5x5))
-        branch5x5 = F.relu(self.branch5x5_3(branch5x5))
-        
-        branch7x7 = self.branch7x7_1(x)
-        branch7x7 = F.relu(self.branch7x7_2(branch7x7))
-        branch7x7 = F.relu(self.branch7x7_3(branch7x7))
-        branch7x7 = F.relu(self.branch7x7_4(branch7x7))
-        
+        branch3x3 = self.branch3x3(x)
+        branch5x5 = self.branch5x5(x)
+        branch7x7 = self.branch7x7(x)
         branch_pool = self.branch_pool(x)
-        branch_pool = self.branch_pool_conv(branch_pool)
+        
+        # Concatenate branches along the channel axis (dimension 1)
+        output = torch.cat([branch1x1, branch3x3, branch5x5, branch7x7, branch_pool], dim=1)
+        return output
+
+class InceptionBlock1DWithUpsampling(nn.Module):
+    def __init__(self, in_channels, out_channels, branch_channels=64, upsample_scale=2, size=None):
+        super(InceptionBlock1DWithUpsampling, self).__init__()
+        
+        self.upsample_scale = upsample_scale
+        self.size = size
+        
+        if size is not None:
+            on_scale_factor = False
+        elif isinstance(self.upsample_scale, int):
+            on_scale_factor = True
+        else:
+            raise "Inform either 'upsample_scale' or 'size'."
+
+        # Branch 1: 1x1 Convolution
+        self.branch1x1 = nn.Sequential(
+            nn.Conv1d(in_channels, out_channels, kernel_size=1),
+            nn.ReLU()
+        )
+        
+        # Branch 2: 1x1 Convolution followed by 3x3 Convolution
+        self.branch3x3 = nn.Sequential(
+            nn.Conv1d(in_channels, branch_channels, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv1d(branch_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU()
+        )
+        
+        # Branch 3: 1x1 Convolution followed by two 3x3 Convolutions (approximating 5x5)
+        self.branch5x5 = nn.Sequential(
+            nn.Conv1d(in_channels, branch_channels, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv1d(branch_channels, branch_channels, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(branch_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU()
+        )
+        
+        # Branch 4: 1x1 Convolution followed by three 3x3 Convolutions (approximating 7x7)
+        self.branch7x7 = nn.Sequential(
+            nn.Conv1d(in_channels, branch_channels, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv1d(branch_channels, branch_channels, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(branch_channels, branch_channels, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(branch_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU()
+        )
+        
+        # Branch 5: 3x3 Max pooling followed by 1x1 Convolution
+        self.branch_pool = nn.Sequential(
+            nn.MaxPool1d(kernel_size=3, stride=1, padding=1),
+            nn.Conv1d(in_channels, out_channels, kernel_size=1),
+            nn.ReLU()
+        )
+        
+        # Upsampling layer to act as transpose convolution
+        if on_scale_factor:
+            self.upsample = nn.Upsample(scale_factor=upsample_scale, mode='linear', align_corners=True)
+        else:
+            self.upsample = nn.Upsample(size=self.size, mode='linear', align_corners=True)
+
+    def forward(self, x):
+        branch1x1 = self.branch1x1(x)
+        branch3x3 = self.branch3x3(x)
+        branch5x5 = self.branch5x5(x)
+        branch7x7 = self.branch7x7(x)
+        branch_pool = self.branch_pool(x)
         
         # Concatenate branches along the channel axis (dimension 1)
         output = torch.cat([branch1x1, branch3x3, branch5x5, branch7x7, branch_pool], dim=1)
         
+        # Apply upsampling to the concatenated output
+        output = self.upsample(output)
         return output
 
-class InceptionAutoencoder(nn.Module):
-    def __init__(self, in_channels, encoding_channels, bottleneck_channels):
-        super(InceptionAutoencoder, self).__init__()
+# Example Encoder-Decoder structure
+class InceptionAutoencoder1D(nn.Module):
+    def __init__(self, units, output_size):
+        super(InceptionAutoencoder1D, self).__init__()
+        self.units = units
+        self.output_size = output_size
         
-        # Encoder
-        self.enc_conv1 = nn.Conv1d(in_channels, 64, kernel_size=3, stride=2, padding=1)
-        self.enc_inception1 = InceptionBlock1D(64, encoding_channels)
-        self.enc_conv2 = nn.Conv1d(encoding_channels * 5, bottleneck_channels, kernel_size=3, stride=2, padding=1)
-        
-        # Bottleneck
-        self.bottleneck = nn.Conv1d(bottleneck_channels, bottleneck_channels, kernel_size=3, stride=2, padding=1)
-        
-        # Decoder
-        self.dec_conv1 = nn.ConvTranspose1d(bottleneck_channels, encoding_channels * 5, kernel_size=3, stride=2, padding=1, output_padding=1)
-        self.dec_inception1 = InceptionBlock1D(encoding_channels * 5, encoding_channels)
-        self.dec_conv2 = nn.ConvTranspose1d(encoding_channels * 5, 64, kernel_size=3, stride=2, padding=1, output_padding=1)
-        self.dec_conv3 = nn.ConvTranspose1d(64, in_channels, kernel_size=3, stride=2, padding=1, output_padding=1)
-        
-    def forward(self, x):
-        # Encoder
-        x = F.relu(self.enc_conv1(x))
-        x = self.enc_inception1(x)
-        x = F.relu(self.enc_conv2(x))
-        
-        # Bottleneck
-        x = F.relu(self.bottleneck(x))
-        
-        # Decoder
-        x = F.relu(self.dec_conv1(x))
-        x = self.dec_inception1(x)
-        x = F.relu(self.dec_conv2(x))
-        x = torch.sigmoid(self.dec_conv3(x))  # Using sigmoid for normalized outputs
-        
-        return x
+        self.encoder = nn.Sequential(
+            InceptionBlock1D(1, self.units),
+            nn.MaxPool1d(2),  # Downsampling
+            InceptionBlock1D(5 * self.units, 2 * self.units),
+            nn.MaxPool1d(2),  # Downsampling
+            InceptionBlock1D(5 * 2 * self.units, 4 * self.units),
+            nn.MaxPool1d(2),  # Downsampling
+            InceptionBlock1D(5 * 4 * self.units, 6 * self.units),
+            nn.MaxPool1d(2),  # Downsampling
+        )
+        self.decoder = nn.Sequential(
+            InceptionBlock1DWithUpsampling(5 * 6 * self.units, 4 * self.units, upsample_scale=2),
+            InceptionBlock1DWithUpsampling(5 * 4 * self.units, 2 * self.units, upsample_scale=2),
+            InceptionBlock1DWithUpsampling(5 * 2 * self.units, self.units, upsample_scale=2),
+            InceptionBlock1DWithUpsampling(5 * self.units, 1, size=self.output_size),
+        )
+        self.channel_adapter = nn.Conv1d(5, 1, kernel_size=1)
+
+    def forward(self, x, *args):
+        encoded = self.encoder(x)
+        decoded = self.decoder(encoded)
+        return self.channel_adapter(decoded)
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):

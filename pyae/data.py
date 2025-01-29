@@ -2,7 +2,14 @@ from torch.utils.data import Dataset
 from torch import rand_like, tensor
 
 class EMIDataset(Dataset):
-    def __init__(self, x, x_categories=None, ids=None, target_feature_index=0, noise=0.0):
+    def __init__(
+        self, 
+        x, 
+        x_categories=None, 
+        ids=None, 
+        target_feature_index=0, 
+        noise=0.0
+    ):
         self.x = x
         self.x_categories = x_categories
         self.ids = ids
@@ -11,12 +18,12 @@ class EMIDataset(Dataset):
     
     def __getitem__(self, index):
         data_output = {}
-
+        
         if self.noise > 0.0:
             x = self.x[index] + self.noise * rand_like(self.x[index])
         else:
             x = self.x[index]
-            
+        
         data_output.update({"x": x})
         
         if self.x_categories is not None:
@@ -30,7 +37,7 @@ class EMIDataset(Dataset):
             y = self.x[index]
         
         data_output.update({"y": y})
-    
+        
         if self.ids is not None:
             data_output.update({"ids": self.ids[index]})
         else:

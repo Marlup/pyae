@@ -20,7 +20,7 @@ def generate_noisy_signals(x, amplitudes=None):
     Returns:
         ndarray: Array of noisy signals.
     """
-    rnd_generator = np.default_rng(RANDOM_STATE)
+    rnd_generator = np.random.default_rng(RANDOM_STATE)
     if not isinstance(amplitudes, (float, np.ndarray, list, tuple, type(None))):
         raise Exception("'amplitudes' must be either an ndarray, list, tuple, float, or None.")
 
@@ -33,9 +33,13 @@ def generate_noisy_signals(x, amplitudes=None):
     
     noisy_signals = []
     for amplitude in amplitudes:
-        noisy_signals.append(x + amplitude * rnd_generator.randn(*x.shape))
-
-    return np.vstack(noisy_signals)
+        noisy_signals.append(
+            x + amplitude * rnd_generator.normal(size=x.shape)
+        )
+    
+    noisy_signals = np.hstack(noisy_signals)
+    
+    return noisy_signals
 
 def generate_synthetic_signal(x, probabilities_to_positive=None, axis=-3, return_array=True):
     """
@@ -97,7 +101,7 @@ def generate_synthetic_signal(x, probabilities_to_positive=None, axis=-3, return
         # Store the new signal
         synthetic_signals.append(synthetic_signal)
 
-    synthetic_signals = np.array(synthetic_signals)
+    synthetic_signals = np.array(synthetic_signals).transpose(1, 0, 2, 3)
     
     return synthetic_signals
 
@@ -186,4 +190,28 @@ def min_max_scale(x, axis=-1, keepdims=True, eps=1e-9):
     
     # Apply min-max normalization
     scaled_x = (x - min_val) / (max_val - min_val + eps)
+    return scaled_x
+
+def max_scale(x, axis=-1, keepdims=True, eps=1e-9):
+    """
+    Apply max normalization on data 'x', along the dimension 'axis' parameter.
+    
+    Args:
+        x (numpy.ndarray or torch.Tensor or xarray.DataArray): A data array or tensor.
+        axis (int): The axis along which to apply the min and max aggregations.
+        keepdims (bool): If True, the aggregated axis is not squeezed, i.e., it is not dropped 
+                        from the data.
+        eps (float): A small value to avoid division by zero.
+
+    Returns:
+        numpy.ndarray or torch.Tensor or xarray.DataArray: A normalized array or tensor.
+    """
+    if not isinstance(x, (np.ndarray, torch.Tensor, xr.DataArray)):
+        raise TypeError("'x' should be either a numpy.ndarray, a torch.Tensor, or a xarray.DataArray.")
+    
+    # Compute min and max values along the specified axis
+    max_val = x.max(axis=axis, keepdims=keepdims)
+    
+    # Apply min-max normalization
+    scaled_x = x / (max_val + eps)
     return scaled_x
