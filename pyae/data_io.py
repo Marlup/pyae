@@ -299,8 +299,7 @@ def build_xarray_array(
     dim,
     main_feature="real",
     clip_to_positive=True,
-    permutations=None,
-    n_splits=0,
+    n_splits=1,
     add_noise_augmentation=False,
     add_minmax_augmentation=False,
     probabilities_to_positive=None,
@@ -319,7 +318,6 @@ def build_xarray_array(
         - dim: Dimension along which to select values.
         - main_feature: Main feature to use.
         - clip_to_positive: Whether to limit values to [0.0 inf).
-        - permutations: Permutations to apply to the data.
         - n_splits: Number of splits to apply to the sequence.
         - add_noise_augmentation: Whether to add noise augmentation.
         - add_minmax_augmentation: Whether to add min-max augmentation.
@@ -395,9 +393,6 @@ def build_xarray_array(
         # Example: (sample, load, sensor, splits, step) ->  (splits, samples, load, sensor, step)
         augmented_x = augmented_x.transpose(3, 0, 1, 2, 4)
     
-    if permutations:
-        augmented_x = np.transpose(augmented_x, axes=permutations)
-        
     # Apply min-max normalization
     augmented_x = min_max_scale(augmented_x, axis=axis_min_max)
     
@@ -405,7 +400,7 @@ def build_xarray_array(
     augmented_x = torch.tensor(augmented_x, dtype=torch.float32)
     
     if on_load_target:
-        target = make_target_load(augmented_x, on_squeeze_target=on_squeeze_target)
+        target = make_target_from_load(augmented_x, on_squeeze_target=on_squeeze_target)
         
     if on_ids:
         ids = make_signal_ids(augmented_x)
@@ -431,8 +426,7 @@ def build_ndarray(
         values, 
         dim, 
         clip_to_positive=True, 
-        permutations=None, 
-        n_splits=0, 
+        n_splits=1, 
         add_noise_augmentation=False,
         add_minmax_augmentation=False, 
         probabilities_to_positive=None,
@@ -450,7 +444,6 @@ def build_ndarray(
         - values: Values of the specified dimension.
         - dim: Dimension along which to select values.
         - clip_to_positive: Whether to limit values to [0.0 inf).
-        - permutations: Permutations to apply to the data.
         - n_splits: Number of splits to apply to the sequence.
         - add_noise_augmentation: Whether to add noise augmentation.
         - add_minmax_augmentation: Whether to add min-max augmentation.
@@ -466,6 +459,9 @@ def build_ndarray(
 
     # Constants
     axis_max = axis_min_max
+
+    if n_splits < 1:
+        n_splits = 1
     
     # Clip real impedance to positive values
     if clip_to_positive:
@@ -500,23 +496,19 @@ def build_ndarray(
         
         print("\tShape of output data:", x_noise_aug.shape)
         augmentations.append(x_noise_aug)
-        
+    
     # Stack first dimension of original and augmentations data
     augmented_x = np.hstack([x, *augmentations])
 
-    if n_splits > 0:
-        # Modify steps that the sequence is splitted in 9 ranges mixed within signal axis (axis=0)
-        n_steps =  n_steps // n_splits
-        *shape_rest, _ = augmented_x.shape
-        # Split the steps dim and spread the data along the new dim 'splits' and 'step' dim
-        augmented_x = augmented_x.reshape(*shape_rest, n_splits, n_steps)
-        # Transpose the dims so that 'split' dim is at 0 and the left ones are rolled 1 position to the right:
-        # Example: (sample, load, sensor, sensors, step) ->  (splits, samples, load, sensor, step)
-        augmented_x = augmented_x.transpose(3, 0, 1, 2, 4)
+    # Modify steps that the sequence is splitted in n_splits ranges mixed within signal axis (axis=0)
+    new_n_steps = n_steps // n_splits
+    *other_dims, _ = augmented_x.shape
+    # Split the steps dim and spread the data along the new dim 'splits' and 'step' dim
+    # The shape before is (sample, load, sensor, new_step)
+    augmented_x = augmented_x.reshape(*other_dims, n_splits, new_n_steps)
+    # The shape afterwards is (sample, load, sensor, split, new_step)
+    # Transpose the dims so that 'split' dim is at 0 and the left ones are rolled 1 position to the right:
 
-    if permutations:
-        augmented_x = np.transpose(augmented_x, axes=permutations)
-        
     # Apply min-max normalization
     if normalization_mode == "minmax":
         augmented_x = min_max_scale(augmented_x, axis=axis_min_max)
@@ -524,8 +516,8 @@ def build_ndarray(
         augmented_x = max_scale(augmented_x, axis=axis_max)
 
     if on_load_target:
-        target = make_target_load(augmented_x, on_squeeze_target=on_squeeze_target)
-        
+        target = make_target_from_load(augmented_x, on_squeeze_target=on_squeeze_target)
+    
     if on_ids:
         ids = make_signal_ids(augmented_x)
 
@@ -553,12 +545,12 @@ def make_target_load(data, on_squeeze_target=True):
     """
     
     # Skip dim 'load' to compute the number of examples
-    *rest, n_loads, n_sensors, n_steps = data.shape
-    n_examples = np.prod(rest) * n_sensors
+    n_samples, n_loads, n_sensors, n_splits, _ = data.shape
+    n_examples_per_load = n_samples * n_sensors * n_splits
     
     target_load = np.repeat(
         [x for x in range(n_loads)], 
-        repeats=n_examples
+        repeats=n_examples_per_load
         ) \
                     .astype(np.int32)
 
