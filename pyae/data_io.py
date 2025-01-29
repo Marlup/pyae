@@ -440,7 +440,7 @@ def build_ndarray(
     Builds a Numpy array of signals for processing.
 
     Parameters:
-        - x: Dataset containing the impedance data (samples, sweeps, categories (sensors), steps).
+        - x: Dataset containing the impedance data (loads, samples, categories (sensors), steps).
         - values: Values of the specified dimension.
         - dim: Dimension along which to select values.
         - clip_to_positive: Whether to limit values to [0.0 inf).
@@ -504,9 +504,9 @@ def build_ndarray(
     new_n_steps = n_steps // n_splits
     *other_dims, _ = augmented_x.shape
     # Split the steps dim and spread the data along the new dim 'splits' and 'step' dim
-    # The shape before is (sample, load, sensor, new_step)
+    # The shape before is (load, sample , sensor, new_step)
     augmented_x = augmented_x.reshape(*other_dims, n_splits, new_n_steps)
-    # The shape afterwards is (sample, load, sensor, split, new_step)
+    # The shape afterwards is (load, sample, sensor, split, new_step)
     # Transpose the dims so that 'split' dim is at 0 and the left ones are rolled 1 position to the right:
 
     # Apply min-max normalization
@@ -538,14 +538,14 @@ def make_target_from_load(data, on_squeeze_target=True):
     Computes a target of integer labels from data Ndarray.
 
     Parameters:
-        - data (ndarray, (*sample, load, sensor, step)): Number of loads in the dataset.
+        - data (ndarray, (load, sample, sensor, split, step)): Number of loads in the dataset.
         
     Returns:
         1D ndarray.
     """
     
     # Skip dim 'load' to compute the number of examples
-    n_samples, n_loads, n_sensors, n_splits, _ = data.shape
+    n_loads, n_samples, n_sensors, n_splits, _ = data.shape
     n_examples_per_load = n_samples * n_sensors * n_splits
     
     target_load = np.repeat(
@@ -560,31 +560,12 @@ def make_target_from_load(data, on_squeeze_target=True):
     # Reshape from (n) to (n, 1) and assign proper dtype
     return np.expand_dims(target_load, axis=-1)
 
-def make_one_hot_encoding(labels, n_categories=None):
-    """
-    Make one-hot encoding from a vector of integer labels.
-    """
-    if n_categories is None:
-        n_categories = len(np.unique(labels))
-    
-    # Expanded matrix of categories in sequential order (0, 1, 2, ... n- 1)
-    categories_expanded_mat = np.repeat(np.arange(n_categories).reshape(1, -1), n_examples, axis=0)
-
-    oh_matrix = np.equal(categories_expanded_mat, labels).astype(int)
-    return oh_matrix
-
-def test_make_one_hot(oh, labels):
-    positions_dummy = oh.argmax(axis=1)
-    return (positions_dummy == labels.squeeze()).all()
-
 def make_signal_ids(data):
     """
     Builds a Tensor of categories which serves as id for each signal.
 
     Parameters:
-        - data (ndarray, (*sample, load, sensor, step))
-          or
-          (ndarray, (split, *sample, load, sensor, step)): original data array.
+        - data (ndarray -> (load, sample, sensor, split, step))
 
     Returns:
         2D Tensor (ndarray) of categories. Each row.
@@ -592,22 +573,21 @@ def make_signal_ids(data):
     from itertools import product
     import pandas as pd
     
-    *shape_rest, n_loads, n_sensors, n_steps = data.shape
+    n_loads, n_samples, n_sensors, n_splits, n_steps = data.shape
     load_vector = np.arange(n_loads)
+    sample_vector = np.arange(n_samples)
     sensor_vector = np.arange(n_sensors)
+    split_vector = np.arange(n_splits)
+
+    names = ["load", "sample", "sensor", "split"]
     
-    if len(shape_rest) > 1:
-        names = ["split", "load", "sensor"]
-        n_splits, n_examples = shape_rest
-        split_vector = np.arange(n_splits)
-        
-        base_combinations = product(split_vector, load_vector, sensor_vector)
-    else:
-        names = ["load", "sensor"]
-        n_examples = np.prod(shape_rest)
+    base_combinations = product(
+        load_vector,
+        sample_vector,
+        sensor_vector, 
+        split_vector
+        )
 
-        base_combinations = product(load_vector, sensor_vector)
-
-    combinations = n_examples * list(base_combinations)
+    combinations = list(base_combinations)
     
     return pd.MultiIndex.from_tuples(combinations, names=names)
