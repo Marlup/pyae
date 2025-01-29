@@ -191,3 +191,27 @@ def min_max_scale(x, axis=-1, keepdims=True, eps=1e-9):
     # Apply min-max normalization
     scaled_x = (x - min_val) / (max_val - min_val + eps)
     return scaled_x
+
+def max_scale(x, axis=-1, keepdims=True, eps=1e-9):
+    """
+    Apply max normalization on data 'x', along the dimension 'axis' parameter.
+    
+    Args:
+        x (numpy.ndarray or torch.Tensor or xarray.DataArray): A data array or tensor.
+        axis (int): The axis along which to apply the min and max aggregations.
+        keepdims (bool): If True, the aggregated axis is not squeezed, i.e., it is not dropped 
+                        from the data.
+        eps (float): A small value to avoid division by zero.
+
+    Returns:
+        numpy.ndarray or torch.Tensor or xarray.DataArray: A normalized array or tensor.
+    """
+    if not isinstance(x, (np.ndarray, torch.Tensor, xr.DataArray)):
+        raise TypeError("'x' should be either a numpy.ndarray, a torch.Tensor, or a xarray.DataArray.")
+    
+    # Compute min and max values along the specified axis
+    max_val = x.max(axis=axis, keepdims=keepdims)
+    
+    # Apply min-max normalization
+    scaled_x = x / (max_val + eps)
+    return scaled_x

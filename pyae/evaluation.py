@@ -70,7 +70,7 @@ Current batch_size is {dataloader.batch_size}")
             break
 
         # Squeeze target and reconstruction (prediction) into 1d-array
-        deviation, reconstruction = training_manager._compute_batch_loss(batch, return_outputs=True)
+        deviation, reconstruction = training_manager._compute_forward_loss(batch, return_outputs=True)
 
         # Plot original and reconstructed signals
         axes[i].plot(batch["y"].cpu().detach().numpy().squeeze(), label="Original", color="blue")
@@ -135,7 +135,7 @@ Current batch_size is {dataloader.batch_size}")
             break
         
         # Squeeze target and reconstruction (prediction) into 1d-array; ## Compute losses
-        deviation, reconstruction = training_manager._compute_batch_loss(batch, return_outputs=True)
+        deviation, reconstruction = training_manager._compute_forward_loss(batch)
         deviation = deviation.item()
         reconstruction = reconstruction.cpu().detach().squeeze()
         
@@ -268,7 +268,7 @@ def compute_loss(training_manager, dataloader, loss_func, on_vae):
     """
     losses = []
     for batch in dataloader:
-        loss = training_manager._compute_batch_loss(batch)
+        loss = training_manager._compute_forward_loss(batch)
 
         losses.append(loss)
     

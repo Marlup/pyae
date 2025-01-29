@@ -17,7 +17,12 @@ from .constant import (
     DATA_DIRECTORY
 )
 
-from .preprocessing import min_max_scale, generate_synthetic_signal, generate_noisy_signals
+from .preprocessing import (
+    min_max_scale, 
+    max_scale,
+    generate_synthetic_signal,
+    generate_noisy_signals
+)
 
 def report_time(func):
     """
@@ -431,6 +436,7 @@ def build_ndarray(
         add_noise_augmentation=False,
         add_minmax_augmentation=False, 
         probabilities_to_positive=None,
+        normalization_mode="minmax",
         axis_min_max=-1, 
         on_load_target=False,
         on_ids=False, 
@@ -449,6 +455,7 @@ def build_ndarray(
         - add_noise_augmentation: Whether to add noise augmentation.
         - add_minmax_augmentation: Whether to add min-max augmentation.
         - probabilities_to_positive: Whether to add probabilities.
+        - normalization_mode: Algorithm for normalization: none, minmax, max
         - axis_min_max: Axis along which to apply reduction of the data.
         - on_load_target: Whether to return a target of integer labels.
         - on_load_target: Whether to return an array of IDs for each sample.
@@ -457,6 +464,9 @@ def build_ndarray(
         Processed data signals and frequency encoding.
     """
 
+    # Constants
+    axis_max = axis_min_max
+    
     # Clip real impedance to positive values
     if clip_to_positive:
         x = x.clip(0.0, None)
@@ -508,7 +518,10 @@ def build_ndarray(
         augmented_x = np.transpose(augmented_x, axes=permutations)
         
     # Apply min-max normalization
-    augmented_x = min_max_scale(augmented_x, axis=axis_min_max)
+    if normalization_mode == "minmax":
+        augmented_x = min_max_scale(augmented_x, axis=axis_min_max)
+    elif normalization_mode == "max":
+        augmented_x = max_scale(augmented_x, axis=axis_max)
 
     if on_load_target:
         target = make_target_load(augmented_x, on_squeeze_target=on_squeeze_target)
