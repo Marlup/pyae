@@ -533,7 +533,7 @@ def build_ndarray(
     else:
         return augmented_x
     
-def make_target_load(data, on_squeeze_target=True):
+def make_target_from_load(data, on_squeeze_target=True):
     """
     Computes a target of integer labels from data Ndarray.
 
