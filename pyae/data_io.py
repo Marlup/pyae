@@ -500,6 +500,12 @@ def build_ndarray(
     # Stack first dimension of original and augmentations data
     augmented_x = np.hstack([x, *augmentations])
 
+    # Apply min-max normalization BEFORE adding splits
+    if normalization_mode == "minmax":
+        augmented_x = min_max_scale(augmented_x, axis=axis_min_max)
+    elif normalization_mode == "max":
+        augmented_x = max_scale(augmented_x, axis=axis_max)
+
     # Modify steps that the sequence is splitted in n_splits ranges mixed within signal axis (axis=0)
     new_n_steps = n_steps // n_splits
     *other_dims, _ = augmented_x.shape
@@ -507,13 +513,6 @@ def build_ndarray(
     # The shape before is (load, sample , sensor, new_step)
     augmented_x = augmented_x.reshape(*other_dims, n_splits, new_n_steps)
     # The shape afterwards is (load, sample, sensor, split, new_step)
-    # Transpose the dims so that 'split' dim is at 0 and the left ones are rolled 1 position to the right:
-
-    # Apply min-max normalization
-    if normalization_mode == "minmax":
-        augmented_x = min_max_scale(augmented_x, axis=axis_min_max)
-    elif normalization_mode == "max":
-        augmented_x = max_scale(augmented_x, axis=axis_max)
 
     if on_load_target:
         target = make_target_from_load(augmented_x, on_squeeze_target=on_squeeze_target)
