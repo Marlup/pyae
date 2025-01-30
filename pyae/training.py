@@ -191,6 +191,7 @@ class TrainingManager:
         optimizer=None,
         criterion=None, 
         metrics=None, 
+        device=None,
         lr_scheduler=None, 
         epochs=10, 
         tol=4e-5,
@@ -210,6 +211,7 @@ class TrainingManager:
         self.optimizer = optimizer
         self.criterion = criterion
         self.metrics = metrics
+        self.device = device
         self.lr_scheduler = lr_scheduler
         self.epochs = epochs
         self.tol = tol
@@ -452,10 +454,15 @@ class TrainingManager:
         return epoch_loss / len(self.eval_loader.dataset)
 
     def _compute_forward_loss(self, batch, return_outputs=False):
-        x, y = batch["x"], batch["y"]
+        if self.device is None:
+            x, y = batch["x"], batch["y"]
+        else:
+            x, y = batch["x"].to(self.device), batch["y"].to(self.device)
         
         if self.mode in ("standard", "classification"):
             x_cat = batch.get("x_category", None)
+            x_cat = x_cat if self.device is None else x_cat.to(self.device)
+            
             return self._compute_forward_loss_standard(x, x_cat, y, return_outputs)
         elif self.mode == "stack":
             return self._compute_forward_loss_stack(x, y, return_outputs)
