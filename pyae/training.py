@@ -462,7 +462,7 @@ class TrainingManager:
         if self.mode in ("standard", "classification"):
             x_cat = batch.get("x_category", None)
             x_cat = x_cat if self.device is None else x_cat.to(self.device)
-            
+
             return self._compute_forward_loss_standard(x, x_cat, y, return_outputs)
         elif self.mode == "stack":
             return self._compute_forward_loss_stack(x, y, return_outputs)
@@ -527,7 +527,7 @@ class TrainingManager:
         
         with torch.no_grad():
             for batch in dataloader:
-                x = batch["x"]
+                x = batch["x"] if self.device is None else batch["x"].to(self.device) 
                 
                 outputs = self.model(x)
                 
