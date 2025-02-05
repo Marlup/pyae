@@ -460,7 +460,7 @@ class TrainingManager:
             x, y = batch["x"].to(self.device), batch["y"].to(self.device)
         
         if self.mode in ("standard", "classification"):
-            x_cat = batch.get("x_category", None)
+            x_cat = batch.get("x_categories", None)
             x_cat = x_cat if self.device is None else x_cat.to(self.device)
 
             return self._compute_forward_loss_standard(x, x_cat, y, return_outputs)
