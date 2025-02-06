@@ -79,7 +79,8 @@ Current batch_size is {dataloader.batch_size}")
         # Setup labels, title and embellishments
         title = f"Loss: {round(deviation.cpu().item(), digits)}"
         if batch["ids"]:
-            ids_format = "load {}, sweep {}, sensor {}".format(*batch["ids"])
+            ids = [x.item() for x in batch["ids"]]
+            ids_format = "load {}, sweep {}, sensor {}, split {}".format(*ids)
             title += f";\nSignal id: {ids_format}"
 
         axes[i].set_title(title)
