@@ -268,8 +268,8 @@ def compute_loss(training_manager, dataloader, loss_func, on_vae):
     """
     losses = []
     for batch in dataloader:
-        loss = training_manager._compute_forward_loss(batch)
-
+        loss = training_manager._compute_forward_loss(batch, return_outputs=True, loss_func=loss_func)
+    
         losses.append(loss)
     
     return torch.tensor(losses, dtype=torch.float32)

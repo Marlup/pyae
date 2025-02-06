@@ -453,7 +453,7 @@ class TrainingManager:
         
         return epoch_loss / len(self.eval_loader.dataset)
 
-    def _compute_forward_loss(self, batch, return_outputs=False):
+    def _compute_forward_loss(self, batch, return_outputs=False, loss_func=None):
         if self.device is None:
             x, y = batch["x"], batch["y"]
         else:
@@ -463,9 +463,9 @@ class TrainingManager:
             x_cat = batch.get("x_categories", None)
             x_cat = x_cat if self.device is None else x_cat.to(self.device)
 
-            return self._compute_forward_loss_standard(x, x_cat, y, return_outputs)
+            return self._compute_forward_loss_standard(x, x_cat, y, return_outputs, loss_func)
         elif self.mode == "stack":
-            return self._compute_forward_loss_stack(x, y, return_outputs)
+            return self._compute_forward_loss_stack(x, y, return_outputs, loss_func)
         elif self.mode == "vae":
             return self._compute_forward_loss_vae(x, y, return_outputs)
         elif self.mode == "dcec":
@@ -473,17 +473,25 @@ class TrainingManager:
         else:
             raise ValueError(f"Unsupported mode: {self.mode}")
 
-    def _compute_forward_loss_standard(self, x, x_cat, target, return_outputs=False):
+    def _compute_forward_loss_standard(self, x, x_cat, target, return_outputs=False, loss_func=None):
         outputs = self.model(x, x_cat)
-        loss = self.criterion(outputs, target)
+
+        if loss_func is None:
+            loss = self.criterion(outputs, target)
+        else:
+            loss = loss_func(outputs, target)
         
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
     
-    def _compute_forward_loss_stack(self, x, target, return_outputs=False):
+    def _compute_forward_loss_stack(self, x, target, return_outputs=False, loss_func=None):
         outputs, target = self.model(x)
-        loss = self.criterion(outputs, target)
+        
+        if loss_func is None:
+            loss = self.criterion(outputs, target)
+        else:
+            loss = loss_func(outputs, target)
         
         if return_outputs:
             return loss.cpu(), outputs.cpu()
