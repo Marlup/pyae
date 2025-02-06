@@ -460,10 +460,10 @@ class TrainingManager:
             x, y = batch["x"].to(self.device), batch["y"].to(self.device)
         
         if self.mode in ("standard", "classification"):
-            x_cat = batch.get("x_categories", None)
-            x_cat = x_cat if self.device is None else x_cat.to(self.device)
+            x_cats = batch.get("x_categories", None)
+            x_cats = x_cats if self.device is None else [x_cat.to(self.device) for x_cat in x_cats]
 
-            return self._compute_forward_loss_standard(x, x_cat, y, return_outputs, loss_func)
+            return self._compute_forward_loss_standard(x, x_cats, y, return_outputs, loss_func)
         elif self.mode == "stack":
             return self._compute_forward_loss_stack(x, y, return_outputs, loss_func)
         elif self.mode == "vae":
@@ -473,8 +473,8 @@ class TrainingManager:
         else:
             raise ValueError(f"Unsupported mode: {self.mode}")
 
-    def _compute_forward_loss_standard(self, x, x_cat, target, return_outputs=False, loss_func=None):
-        outputs = self.model(x, x_cat)
+    def _compute_forward_loss_standard(self, x, x_cats, target, return_outputs=False, loss_func=None):
+        outputs = self.model(x, x_cats)
 
         if loss_func is None:
             loss = self.criterion(outputs, target)
@@ -487,7 +487,7 @@ class TrainingManager:
     
     def _compute_forward_loss_stack(self, x, target, return_outputs=False, loss_func=None):
         outputs, target = self.model(x)
-        
+
         if loss_func is None:
             loss = self.criterion(outputs, target)
         else:
