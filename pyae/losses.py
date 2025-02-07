@@ -87,7 +87,8 @@ class VariationalLoss(nn.Module):
     """
     Variational loss function for Variational Autoencoders (VAEs).
     Parameters:
-        - var_eps (float): Epsilon value for numerical stability.
+        - beta (float): 0 to 1 value to balance the kld loss.
+        - reduction (str): reduction strategy for batch dim in mse function.
 
     Forward call:
         Calculates the total loss including reconstruction loss and KL divergence loss.
@@ -97,11 +98,10 @@ class VariationalLoss(nn.Module):
         - _cast_to_tensor: Casts input to a tensor.
     """
 
-    def __init__(self, beta=0.5, reduction="sum", var_eps=0.001):
+    def __init__(self, beta=0.5, reduction="sum"):
         super(VariationalLoss, self).__init__()
 
         self.beta = beta
-        self.var_eps = var_eps
         self.reduction = reduction
     
     def forward(self, output, x, mean, log_var):
@@ -122,10 +122,13 @@ class VariationalLoss(nn.Module):
         if not self._is_tensor(x):
             x = self._cast_to_tensor(x)
 
-        reconstruction_loss = nn.functional.mse_loss(output, x, reduction=self.reduction) / len(output)
+        reconstruction_loss = nn.functional.mse_loss(
+            output, 
+            x, 
+            reduction=self.reduction) / len(output)
         kl_loss = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
 
-        return reconstruction_loss + self.beta * kl_loss + self.var_eps
+        return reconstruction_loss + self.beta * kl_loss
     
     def _is_tensor(self, x):
         """
