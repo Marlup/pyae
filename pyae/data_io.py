@@ -293,134 +293,6 @@ def read_xarray_dataset(path, engine="netcdf4", drop_dups=False):
 
     return data, columns, data_vars
 
-def build_xarray_array(
-    x, 
-    values,
-    dim,
-    main_feature="real",
-    clip_to_positive=True,
-    n_splits=1,
-    add_noise_augmentation=False,
-    add_minmax_augmentation=False,
-    probabilities_to_positive=None,
-    axis_min_max=-1,
-    on_load_target=False,
-    on_ids=False,
-    final_reshape=None,
-    on_squeeze_target=True
-    ):
-    """
-    Builds an array of signals for processing.
-
-    Parameters:
-        - x: Dataset containing the impedance data (samples, sweeps, categories (sensors), steps).
-        - values: Values of the specified dimension.
-        - dim: Dimension along which to select values.
-        - main_feature: Main feature to use.
-        - clip_to_positive: Whether to limit values to [0.0 inf).
-        - n_splits: Number of splits to apply to the sequence.
-        - add_noise_augmentation: Whether to add noise augmentation.
-        - add_minmax_augmentation: Whether to add min-max augmentation.
-        - probabilities_to_positive: Whether to add probabilities.
-        - axis_min_max: Axis along which to apply reduction of the data.
-        - bound_to_positives: Whether to clip negative values to positive.
-        - on_load_target: Whether to return a target of integer labels.
-        - on_load_target: Whether to return an array of IDs for each sample.
-        - final_reshape: tuple with reshape dims to return. 
-
-    Returns:
-        Processed data signals and frequency encoding.
-    """
-    # Clip real impedance to positive values
-    if clip_to_positive:
-        data = x[main_feature].clip(0.0, None)
-    else:
-        data = x[main_feature]
-
-    data = data.sel({dim: values}).values
-    *_, n_steps = data.shape
-
-    # Initialize list of augmentations
-    augmentations = []
-    
-    # Apply min-max augmentation before normalization
-    if add_minmax_augmentation:
-        print("\nRunning min-max augmentation:")
-        print("\tShape of input data", data.shape)
-        
-        # Before (load, sweeps, categories, steps)
-        x_minmax_aug = generate_synthetic_signal(data, probabilities_to_positive=probabilities_to_positive)
-        # After (n_probabilities=total_examples, load, categories, steps)
-        augmentations.append(x_minmax_aug)
-        
-        print("\tShape of output data:", x_minmax_aug.shape)
-    
-    # Apply white noise augmentation after normalization
-    if add_noise_augmentation:
-        print("\nRunning noise augmentation:")
-        print("\tShape of input data:", data.shape)
-        
-        x_noise_aug = generate_noisy_signals(data)
-        # Transpose dimension load and sweeps stack dims 0 and 1 (sweeps): 
-        # Before (examples, load, sweeps, categories, steps)
-        # TODO Fix error 'axes don't match array'
-        x_noise_aug = x_noise_aug.transpose(0, 2, 1, 3, 4)
-        
-        examples_noise, examples_sweep, *shape_rest = x_noise_aug.shape
-        x_noise_aug = x_noise_aug.reshape(-1, *shape_rest)
-        # After 1 (examples, sweeps, load, , categories, steps)
-        # After 2 (examples * sweeps=total_examples, load, categories, steps)
-        print("\tShape of output data:", x_noise_aug.shape)
-        augmentations.append(x_noise_aug)
-
-    # Transpose dims load and sweep.
-    # Before (load, sweeps, categories, steps)
-    data = data.transpose(1, 0, 2, 3)
-    # After (sweeps, load, categories, steps)
-    
-    print("\nShape of the original data (after 0 (load) and 1 (sweeps) dims transposition)):", data.shape)
-
-    # Stack first dimension of original and augmentations data
-    augmented_x = np.vstack([data, *augmentations])
-
-    if n_splits > 0:
-        # Modify steps that the sequence is splitted in 9 ranges mixed within signal axis (axis=0)
-        n_steps =  n_steps // n_splits
-        *shape_rest, _ = augmented_x.shape
-        # Split the steps dim and spread the data along the new dim 'splits' and 'step' dim
-        augmented_x = augmented_x.reshape(*shape_rest, n_splits, n_steps)
-        # Transpose the dims so that 'split' dim is at 0 and the left ones are rolled 1 position to the right:
-        # Example: (sample, load, sensor, splits, step) ->  (splits, samples, load, sensor, step)
-        augmented_x = augmented_x.transpose(3, 0, 1, 2, 4)
-    
-    # Apply min-max normalization
-    augmented_x = min_max_scale(augmented_x, axis=axis_min_max)
-    
-    # cast to tensor
-    augmented_x = torch.tensor(augmented_x, dtype=torch.float32)
-    
-    if on_load_target:
-        target = make_target_from_load(augmented_x, on_squeeze_target=on_squeeze_target)
-        
-    if on_ids:
-        ids = make_signal_ids(augmented_x)
-
-    # Reshape to 2D tensor (samples/signals, step)
-    if final_reshape is not None:
-        augmented_x = augmented_x.reshape(final_reshape)
-    
-    print("\nShape of the augmented data:", augmented_x.shape)
-
-    # Return options
-    if on_load_target and on_ids:
-        return augmented_x, target, ids
-    elif on_load_target:
-        return augmented_x, target
-    elif on_ids:
-        return augmented_x, ids
-    else:
-        return augmented_x
-
 def build_ndarray(
         x, 
         values, 
@@ -431,6 +303,7 @@ def build_ndarray(
         add_minmax_augmentation=False, 
         probabilities_to_positive=None,
         normalization_mode="minmax",
+        by_load_value=0,
         axis_min_max=-1, 
         on_load_target=False,
         on_ids=False, 
@@ -448,7 +321,8 @@ def build_ndarray(
         - add_noise_augmentation: Whether to add noise augmentation.
         - add_minmax_augmentation: Whether to add min-max augmentation.
         - probabilities_to_positive: Whether to add probabilities.
-        - normalization_mode: Algorithm for normalization: none, minmax, max
+        - normalization_mode: Algorithm for normalization: none, minmax, max.
+        - by_load_value: Value which selects the data reference for normalization. 
         - axis_min_max: Axis along which to apply reduction of the data.
         - on_load_target: Whether to return a target of integer labels.
         - on_load_target: Whether to return an array of IDs for each sample.
@@ -499,6 +373,18 @@ def build_ndarray(
     
     # Stack first dimension of original and augmentations data
     augmented_x = np.hstack([x, *augmentations])
+
+    # Apply min-max normalization BEFORE adding splits
+    if normalization_mode == "minmax":
+        augmented_x = min_max_scale(augmented_x, 
+                                    axis=axis_min_max,
+                                    by_load_value=by_load_value
+                                   )
+    elif normalization_mode == "max":
+        augmented_x = max_scale(augmented_x, 
+                                axis=axis_max,
+                                by_load_value=by_load_value
+                               )
 
     # Modify steps that the sequence is splitted in n_splits ranges mixed within signal axis (axis=0)
     new_n_steps = n_steps // n_splits

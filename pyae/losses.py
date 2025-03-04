@@ -125,7 +125,7 @@ class VariationalLoss(nn.Module):
         reconstruction_loss = nn.functional.mse_loss(
             output, 
             x, 
-            reduction=self.reduction) / len(output)
+            reduction=self.reduction)
         kl_loss = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
 
         return reconstruction_loss + self.beta * kl_loss

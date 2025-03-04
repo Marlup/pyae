@@ -167,7 +167,7 @@ def _generate_min_max(x, axis):
         ]
     )
 
-def min_max_scale(x, axis=-1, keepdims=True, eps=1e-9):
+def min_max_scale(x, axis=-1, keepdims=True, eps=1e-9, by_load_value=None):
     """
     Apply min-max normalization on data 'x', along the dimension 'axis' parameter.
     
@@ -183,16 +183,14 @@ def min_max_scale(x, axis=-1, keepdims=True, eps=1e-9):
     """
     if not isinstance(x, (np.ndarray, torch.Tensor, xr.DataArray)):
         raise TypeError("'x' should be either a numpy.ndarray, a torch.Tensor, or a xarray.DataArray.")
-    
-    # Compute min and max values along the specified axis
-    min_val = x.min(axis=axis, keepdims=keepdims)
-    max_val = x.max(axis=axis, keepdims=keepdims)
+
+    min_val, max_val = get_min_max(x, axis, keepdims, by_load_value)
     
     # Apply min-max normalization
     scaled_x = (x - min_val) / (max_val - min_val + eps)
     return scaled_x
 
-def max_scale(x, axis=-1, keepdims=True, eps=1e-9):
+def max_scale(x, axis=-1, keepdims=True, eps=1e-9, by_load_value=None):
     """
     Apply max normalization on data 'x', along the dimension 'axis' parameter.
     
@@ -210,8 +208,22 @@ def max_scale(x, axis=-1, keepdims=True, eps=1e-9):
         raise TypeError("'x' should be either a numpy.ndarray, a torch.Tensor, or a xarray.DataArray.")
     
     # Compute min and max values along the specified axis
-    max_val = x.max(axis=axis, keepdims=keepdims)
+    _, max_val = get_min_max(x, axis, keepdims, by_load_value)
     
     # Apply min-max normalization
     scaled_x = x / (max_val + eps)
     return scaled_x
+
+def get_min_max(x, axis=-1, keepdims=True, by_load_value=None):
+    if isinstance(by_load_value, (list, tuple)):
+        by_load_value = by_load_value[0]
+    
+    if by_load_value is not None:
+        # Compute min and max values along the specified axis
+        x = x[[by_load_value]]
+        x = x[[by_load_value]]
+    
+    min_val = x.min(axis=axis, keepdims=keepdims)
+    max_val = x.max(axis=axis, keepdims=keepdims)
+
+    return min_val, max_val

@@ -424,6 +424,8 @@ class TrainingManager:
         if self._should_update_p_target():
             self._update_p_target()
         
+        n = len(self.train_loader.dataset)
+        
         for batch in self.train_loader:
             # Reset gradients for a new batch
             self.optimizer.zero_grad()
@@ -439,7 +441,7 @@ class TrainingManager:
             
             epoch_loss += loss.item()
         
-        return epoch_loss / len(self.train_loader.dataset)
+        return epoch_loss / n
     
     @results_evaluation_epoch
     def _eval_epoch(self):
@@ -468,6 +470,8 @@ class TrainingManager:
             return self._compute_forward_loss_stack(x, y, return_outputs, loss_func)
         elif self.mode == "vae":
             return self._compute_forward_loss_vae(x, y, return_outputs)
+        elif self.mode == "vmae":
+            return self._compute_forward_loss_vmae(x, y, return_outputs)
         elif self.mode == "dcec":
             return self._compute_forward_loss_dcec(x, y, return_outputs)
         else:
@@ -503,6 +507,14 @@ class TrainingManager:
         
         if return_outputs:
             return loss.cpu(), outputs.cpu()
+        return loss
+    
+    def _compute_forward_loss_vmae(self, x, target, return_outputs=False):
+        outputs, map_outputs, mean, map_mean, log_var, map_log_var = self.model(x)
+        loss = self.criterion(outputs, map_outputs, target, mean, map_mean, log_var, map_log_var)
+        
+        if return_outputs:
+            return loss.cpu(), outputs.cpu(), map_outputs.cpu()
         return loss
     
     def _compute_forward_loss_dcec(self, x, target, return_outputs=False):
