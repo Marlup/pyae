@@ -424,6 +424,8 @@ class TrainingManager:
         if self._should_update_p_target():
             self._update_p_target()
         
+        n = len(self.train_loader.dataset)
+        
         for batch in self.train_loader:
             # Reset gradients for a new batch
             self.optimizer.zero_grad()
@@ -439,7 +441,7 @@ class TrainingManager:
             
             epoch_loss += loss.item()
         
-        return epoch_loss / len(self.train_loader.dataset)
+        return epoch_loss / n
     
     @results_evaluation_epoch
     def _eval_epoch(self):
