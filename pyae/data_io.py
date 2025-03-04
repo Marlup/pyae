@@ -394,6 +394,12 @@ def build_ndarray(
     augmented_x = augmented_x.reshape(*other_dims, n_splits, new_n_steps)
     # The shape afterwards is (load, sample, sensor, split, new_step)
 
+    # Apply min-max normalization BEFORE adding splits
+    if normalization_mode == "minmax":
+        augmented_x = min_max_scale(augmented_x, axis=axis_min_max)
+    elif normalization_mode == "max":
+        augmented_x = max_scale(augmented_x, axis=axis_max)
+
     if on_load_target:
         target = make_target_from_load(augmented_x, on_squeeze_target=on_squeeze_target)
     

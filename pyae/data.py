@@ -11,7 +11,7 @@ class EMIDataset(Dataset):
         noise=0.0
     ):
         self.x = x
-        self.x_categories = x_categories
+        self.x_categories = x_categories if x_categories is not None else []
         self.ids = ids
         self.target_feature_index = target_feature_index
         self.noise = noise
@@ -26,11 +26,13 @@ class EMIDataset(Dataset):
         
         data_output.update({"x": x})
         
-        if self.x_categories is not None:
-            data_output.update({"x_categories": self.x_categories[index]})
+        if self.x_categories:
+            # Suponiendo que x_categories es una lista de tensores one-hot
+            categories = [self.x_categories[i][index] for i in range(len(self.x_categories))]
+            data_output.update({"x_categories": categories})
         
         if len(self.x.shape) == 3:
-            y = self.x[index, [self.target_feature_index]] # to keep dims
+            y = self.x[index, [self.target_feature_index]]  # to keep dims
         elif len(self.x.shape) == 2:
             y = self.x[index]
         else:

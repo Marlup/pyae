@@ -79,7 +79,8 @@ Current batch_size is {dataloader.batch_size}")
         # Setup labels, title and embellishments
         title = f"Loss: {round(deviation.cpu().item(), digits)}"
         if batch["ids"]:
-            ids_format = "load {}, sweep {}, sensor {}".format(*batch["ids"])
+            ids = [x.item() for x in batch["ids"]]
+            ids_format = "load {}, sweep {}, sensor {}, split {}".format(*ids)
             title += f";\nSignal id: {ids_format}"
 
         axes[i].set_title(title)
@@ -268,11 +269,11 @@ def compute_loss(training_manager, dataloader, loss_func, on_vae):
     """
     losses = []
     for batch in dataloader:
-        loss = training_manager._compute_forward_loss(batch)
+        loss = training_manager._compute_forward_loss(batch, loss_func=loss_func)
 
-        losses.append(loss)
+        losses.append(loss.item())
     
-    return torch.tensor(losses, dtype=torch.float32)
+    return torch.tensor(losses)
 
 def get_loss_statistics(training_manager, dataloader, loss_func, on_vae=False):
     """
