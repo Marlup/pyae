@@ -14,6 +14,7 @@ from .constant import (
     RANDOM_STATE
 )
 
+from early_stopper import EarlyStopper
 from pyae.evaluation import plot_reconstruction, compute_losses_from_dataloader
 from pyae.data import EMIDatasetClassifier
 from pyae.utils import get_timestamp
@@ -269,8 +270,7 @@ class TrainingManager:
         self.eval_dis_losses = []
         self.train_dis_losses = []
         self.p_target = None
-        self.prev_loss = float("inf")
-        self.no_improvement_count = 0
+        self.early_stopper = EarlyStopper(tol=self.tol, max_no_improvements=self.max_no_improvements)
 
     def early_stopper(func):
         def wrapper(*args, **kwargs):
@@ -400,9 +400,9 @@ class TrainingManager:
             print(40 * "-")
             
             # Train one epoch
-            epoch_loss, *dis_loss = self._train_epoch()
+            epoch_loss, dis_loss = self._train_epoch()
             self.train_losses.append(epoch_loss)
-            self.train_dis_losses.append(dis_loss)
+            self.train_dis_losses.append(dis_loss[0])
 
             # Save model at checkpoint
             can_model_checkpoint = self.on_model_checkpoint and (self.epochs > 0) and (self.epochs % self.checkpoint_frequency == 0)
@@ -416,9 +416,9 @@ class TrainingManager:
             # Evaluate one epoch
             # Run one step of early_stopping
             if self.eval_loader is not None:
-                eval_loss, *eval_dis_loss = self._eval_epoch()
+                eval_loss, eval_dis_loss = self._eval_epoch()
                 self.eval_losses.append(eval_loss)
-                self.eval_dis_losses.append(eval_dis_loss)
+                self.eval_dis_losses.append(eval_dis_loss[0])
                 
                 on_early_stopping = self._early_stopping(eval_loss)
             
@@ -493,7 +493,7 @@ class TrainingManager:
             self.optimizer_discriminator.zero_grad()
             
             # Compute forward step and loss
-            total_loss, *dis_loss = self._compute_forward_loss(batch)
+            total_loss, dis_loss = self._compute_forward_loss(batch)
             
             # Compute backpropagation
             total_loss.backward()
@@ -692,23 +692,10 @@ class TrainingManager:
         return torch.cat(unbatched_outputs, dim=dim)
 
     def _early_stopping(self, current_loss):
-        """
-        Returns True if there weren't sufficient improvements,
-        otherwise False.
-        """
-        
-        loss_change = abs(self.prev_loss - current_loss)
-        
-        if loss_change < self.tol:
-            self.no_improvement_count += 1
-        else:
-            self.no_improvement_count = 0
-        
-        if self.no_improvement_count >= self.max_no_improvements:
-            self.no_improvement_count = 0
-            print(f"Early stopping after {self.max_no_improvements} epochs: Loss improvement threshold reached.")
-            return True
-        return False
+        stop = self.early_stopper.check(current_loss)
+        if stop:
+            print(f"Early stopping: no improvements for {self.max_no_improvements} epochs.")
+        return stop
 
     def _save_state(self, epoch, loss, on_last_model_checkpoint=False):
         if on_last_model_checkpoint:
