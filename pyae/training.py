@@ -6,6 +6,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
+import torch.nn.functional as F
 import pandas as pd
 from matplotlib import pyplot as plt
 
@@ -188,8 +189,11 @@ class TrainingManager:
         train_loader,
         eval_loader=None,
         group_test_loaders=None,
+        discriminator=None,
         optimizer=None,
+        optimizer_discriminator=None,
         criterion=None, 
+        criterion_discriminator=None, 
         metrics=None, 
         device=None,
         lr_scheduler=None, 
@@ -208,8 +212,11 @@ class TrainingManager:
         self.train_loader = train_loader
         self.eval_loader = eval_loader
         self.group_test_loaders = group_test_loaders
+        self.discriminator = discriminator
         self.optimizer = optimizer
+        self.optimizer_discriminator = optimizer_discriminator
         self.criterion = criterion
+        self.criterion_discriminator = criterion_discriminator
         self.metrics = metrics
         self.device = device
         self.lr_scheduler = lr_scheduler
@@ -243,12 +250,23 @@ class TrainingManager:
         self.step_size = self.lr_scheduler.step_size
         self.gamma = self.lr_scheduler.gamma
 
+        # Check if discriminator is used
+        if mode == "factorVAE" \
+        and discriminator is not None \
+        and criterion_discriminator is not None \
+        and optimizer_discriminator is not None:
+            self.has_discriminator = True
+        else:
+            self.has_discriminator = False
+
         # Initialize dictionary to save default training parameters
         if mode == "dcec":
             self._set_default_postrain_config(postrain_config)
         
         self.train_losses = []
         self.eval_losses = []
+        self.eval_dis_losses = []
+        self.train_dis_losses = []
         self.p_target = None
         self.prev_loss = float("inf")
         self.no_improvement_count = 0
@@ -375,13 +393,15 @@ class TrainingManager:
     
     def _train_model(self):
         on_early_stopping = False
+
         for epoch in range(self.epochs):
             print(f"Epoch {epoch + 1}/{self.epochs}")
             print(40 * "-")
             
             # Train one epoch
-            epoch_loss = self._train_epoch()
+            epoch_loss, *dis_loss = self._train_epoch()
             self.train_losses.append(epoch_loss)
+            self.train_dis_losses.append(dis_loss)
 
             # Save model at checkpoint
             can_model_checkpoint = self.on_model_checkpoint and (self.epochs > 0) and (self.epochs % self.checkpoint_frequency == 0)
@@ -395,8 +415,9 @@ class TrainingManager:
             # Evaluate one epoch
             # Run one step of early_stopping
             if self.eval_loader is not None:
-                eval_loss = self._eval_epoch()
+                eval_loss, *eval_dis_loss = self._eval_epoch()
                 self.eval_losses.append(eval_loss)
+                self.eval_dis_losses.append(eval_dis_loss)
                 
                 on_early_stopping = self._early_stopping(eval_loss)
             
@@ -412,10 +433,18 @@ class TrainingManager:
 
         if self.on_model_checkpoint:
             self._save_state(epoch=self.epochs, loss=self.prev_loss, on_last_model_checkpoint=True)
+        
         self.model.eval()
+        self.discriminator.eval()
     
-    @results_training_epoch
     def _train_epoch(self):
+        if self.has_discriminator:
+            return self._train_epoch_dis()
+        else:
+            return self._train_epoch_no_dis()
+
+    @results_training_epoch
+    def _train_epoch_no_dis(self):
         self.model.train()
         epoch_loss = 0.0
         
@@ -443,8 +472,49 @@ class TrainingManager:
         
         return epoch_loss / n
     
-    @results_evaluation_epoch
+    @results_training_epoch
+    def _train_epoch_dis(self):
+        self.model.train()
+        self.discriminator.train()
+        epoch_total_loss = 0.0
+        epoch_dis_loss = 0.0
+        
+        # Check if we need to update p_target with all available examples
+        #if self.p_target is None and self._should_update_p_target():
+        if self._should_update_p_target():
+            self._update_p_target()
+        
+        n = len(self.train_loader.dataset)
+        
+        for batch in self.train_loader:
+            # Reset gradients for a new batch
+            self.optimizer.zero_grad()
+            self.optimizer_discriminator.zero_grad()
+            
+            # Compute forward step and loss
+            total_loss, *dis_loss = self._compute_forward_loss(batch)
+            
+            # Compute backpropagation
+            total_loss.backward()
+            dis_loss.backward()
+            
+            # Update weights and parameters
+            self.optimizer.step()
+            self.optimizer_discriminator.step()
+            
+            epoch_total_loss += total_loss.item()
+            epoch_dis_loss += total_loss.item()
+        
+        return total_loss / n, epoch_dis_loss / n
+    
     def _eval_epoch(self):
+        if self.has_discriminator:
+            return self._eval_epoch_dis()
+        else:
+            return self._eval_epoch_no_dis()
+
+    @results_evaluation_epoch
+    def _eval_epoch_no_dis(self):
         self.model.eval()
         epoch_loss = 0.0
         
@@ -454,6 +524,21 @@ class TrainingManager:
                 epoch_loss += loss.item()
         
         return epoch_loss / len(self.eval_loader.dataset)
+    
+    @results_evaluation_epoch
+    def _eval_epoch_dis(self):
+        self.model.eval()
+        epoch_loss = 0.0
+        epoch_dis_loss = 0.0
+        
+        with torch.no_grad():
+            for batch in self.eval_loader:
+                loss, dis_loss = self._compute_forward_loss(batch)
+                epoch_loss += loss.item()
+                epoch_dis_loss += dis_loss.item()
+        
+        n = len(self.eval_loader.dataset)
+        return epoch_loss / n, dis_loss / n
 
     def _compute_forward_loss(self, batch, return_outputs=False, loss_func=None):
         if self.device is None:
@@ -474,6 +559,8 @@ class TrainingManager:
             return self._compute_forward_loss_vmae(x, y, return_outputs)
         elif self.mode == "dcec":
             return self._compute_forward_loss_dcec(x, y, return_outputs)
+        elif self.mode == "factorVAE":
+            return self._compute_forward_loss_factorVAE(x, y, return_outputs)
         else:
             raise ValueError(f"Unsupported mode: {self.mode}")
 
@@ -524,6 +611,52 @@ class TrainingManager:
         if return_outputs:
             return loss.cpu(), outputs.cpu()
         return loss
+
+    def _compute_forward_loss_factorVAE(self, x, y=None, return_outputs=False):
+        # Step 1: Forward
+        recon_x, z, logvar, mu = self.model(x)  # <-- asegúrate de que devuelve esos 4 valores
+        
+        # Discriminator loss
+        logits_real = self.discriminator(z)
+        vae_d_loss = self._compute_forward_loss_factorVAE_discriminator(z, logits_real)
+        
+        # VAE Loss
+        tc_logits = logits_real
+        vae_total_loss, *_ = self._compute_forward_loss_factorVAE_vae(recon_x, z, logvar, mu, tc_logits)
+
+        if return_outputs:
+            return vae_total_loss.cpu(), vae_d_loss.cpu(), recon_x.cpu()
+        return vae_total_loss.cpu(), vae_d_loss.cpu()
+
+    def _compute_forward_loss_factorVAE_discriminator(self, z, logits_real):
+        # Latent permutation dimension permutation
+        with torch.no_grad():
+            z_perm = self._permute_dims(z)
+        
+        # Discriminator permutation logits
+        logits_fake = self.discriminator(z_perm)
+
+        # Discriminator Loss calculation
+        d_loss = self.criterion_discriminator(logits_real, logits_fake)
+        
+        return d_loss
+
+    def _compute_forward_loss_factorVAE_vae(self, recon_x, x, mu, logvar, tc_logits):
+        # VAE Loss calculation
+        recon_loss, kl_loss, tc_loss = self.criterion(
+            recon_x, x, mu, logvar, tc_logits
+        )
+        
+        # Total loss
+        total_loss = recon_loss + kl_loss + tc_loss
+
+        return total_loss, recon_loss, kl_loss, tc_loss
+
+    def _permute_dims(self, z: torch.Tensor) -> torch.Tensor:
+        """ Permute the dimensions of the input tensor z."""
+        B, D = z.size()
+        z_perm = [z[torch.randperm(B), d] for d in range(D)]
+        return torch.stack(z_perm, dim=1)
     
     def _update_parameters(self):
         self.optimizer.step()
@@ -610,7 +743,7 @@ class TrainingManager:
     
     def evaluate_model(self):
         self.model.eval()
-        avg_eval_loss = self._eval_epoch()
+        avg_eval_loss = self._eval_epoch_no_dis()
 
         return avg_eval_loss
 
