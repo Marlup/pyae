@@ -14,7 +14,7 @@ from .constant import (
     RANDOM_STATE
 )
 
-from early_stopper import EarlyStopper
+from pyae.early_stopper import EarlyStopper
 from pyae.evaluation import plot_reconstruction, compute_losses_from_dataloader
 from pyae.data import EMIDatasetClassifier
 from pyae.utils import get_timestamp
@@ -271,18 +271,6 @@ class TrainingManager:
         self.train_dis_losses = []
         self.p_target = None
         self.early_stopper = EarlyStopper(tol=self.tol, max_no_improvements=self.max_no_improvements)
-
-    def early_stopper(func):
-        def wrapper(*args, **kwargs):
-            self = args[0]
-            results = func(*args, **kwargs)
-            
-            # Print Loss and learning rate
-            print(f"\tLearning Rate: {self.optimizer.param_groups[0]['lr']}")
-            print(f"\tTraining loss: {round(results, 6)}")
-            return results
-        
-        return wrapper
     
     def train_model(self):
         # Run pretraining
