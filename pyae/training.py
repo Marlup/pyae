@@ -643,12 +643,9 @@ class TrainingManager:
 
     def _compute_forward_loss_factorVAE_vae(self, recon_x, x, mu, logvar, tc_logits):
         # VAE Loss calculation
-        recon_loss, kl_loss, tc_loss = self.criterion(
+        total_loss, recon_loss, kl_loss, tc_loss = self.criterion(
             recon_x, x, mu, logvar, tc_logits
         )
-        
-        # Total loss
-        total_loss = recon_loss + kl_loss + tc_loss
 
         return total_loss, recon_loss, kl_loss, tc_loss
 
