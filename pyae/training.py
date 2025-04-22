@@ -39,7 +39,7 @@ def results_training_epoch(func):
         
         # Print Loss and learning rate
         param = self.optimizer.param_groups[0]
-        loss = results[0]
+        loss = results[0].item()
         print(f"\tLearning Rate: {param['lr']}")
         print(f"\tTraining loss: {round(loss, 6)}")
         return results
@@ -60,7 +60,7 @@ def results_evaluation_epoch(func):
         results = func(*args, **kwargs)
         
         # Print Loss
-        eval_loss = results[0]
+        eval_loss = results[0].item()
         print(f"\tEval loss: {round(eval_loss, 6)}")
         print(40 * "-")
         return results
