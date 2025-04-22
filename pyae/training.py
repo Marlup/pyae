@@ -495,9 +495,9 @@ class TrainingManager:
             self.optimizer_discriminator.step()
             
             epoch_total_loss += total_loss.item()
-            epoch_dis_loss += total_loss.item()
+            epoch_dis_loss += dis_loss.item()
         
-        return total_loss / n, epoch_dis_loss / n
+        return epoch_total_loss / n, epoch_dis_loss / n
     
     def _eval_epoch(self):
         if self.has_discriminator:
@@ -515,7 +515,8 @@ class TrainingManager:
                 loss = self._compute_forward_loss(batch)
                 epoch_loss += loss.item()
         
-        return epoch_loss / len(self.eval_loader.dataset)
+        n = len(self.eval_loader.dataset)
+        return epoch_loss / n
     
     @results_evaluation_epoch
     def _eval_epoch_dis(self):
