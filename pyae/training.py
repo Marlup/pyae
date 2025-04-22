@@ -392,7 +392,7 @@ class TrainingManager:
             # Train one epoch
             epoch_loss, dis_loss = self._train_epoch()
             self.train_losses.append(epoch_loss)
-            self.train_dis_losses.append(dis_loss[0])
+            self.train_dis_losses.append(dis_loss)
 
             # Save model at checkpoint
             can_model_checkpoint = self.on_model_checkpoint and (self.epochs > 0) and (self.epochs % self.checkpoint_frequency == 0)
@@ -408,7 +408,7 @@ class TrainingManager:
             if self.eval_loader is not None:
                 eval_loss, eval_dis_loss = self._eval_epoch()
                 self.eval_losses.append(eval_loss)
-                self.eval_dis_losses.append(eval_dis_loss[0])
+                self.eval_dis_losses.append(eval_dis_loss)
                 
                 on_early_stopping = self._early_stopping(eval_loss)
             
