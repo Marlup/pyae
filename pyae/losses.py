@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.nn.modules.loss import _Loss
+import torch.nn.functional as F
 
 # Custom loss implementation (function vs class): https://discuss.pytorch.org/t/custom-loss-implementation-function-vs-class/143880/2
 ################# 
@@ -274,3 +275,84 @@ def kl_divergence(q, p_target, eps=1e-3):
     """
     q += eps
     return (p_target * torch.log(p_target / q)).sum()
+
+def mse_hybrid_reduction(x, y):
+    """
+    Mean Squared Error with hybrid reduction: 
+    1. Sum over features (dim 1).
+    2. Mean over batch (dim 0).
+    """
+    return torch.mean(
+        torch.sum(
+            torch.pow(x - y, 2), 
+            axis=1), 
+        axis=0
+    )
+
+def vae_hybrid_loss(recon_x, x, mean, log_var, reduction="sum"):
+    reconstruction_loss = mse_hybrid_reduction(recon_x, x)
+    
+    if reduction == "mean":
+        kl_loss = -0.5 * torch.mean(1 + log_var - mean.pow(2) - log_var.exp())
+    else:  # assumes "sum"
+        kl_loss = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp()) / len(mean)
+
+    if torch.isnan(reconstruction_loss).any():
+        print("NaN detected in reconstruction loss!")
+    if torch.isnan(kl_loss).any():
+        print("NaN detected in KL loss!")
+    
+    return reconstruction_loss, kl_loss
+
+# ----- FactorVAE -----
+class FactorVAELoss(nn.Module):
+    """
+    FactorVAE loss function (reconstruction + KL + Total Correlation).
+
+    Parameters:
+        - gamma (float): penalización sobre la Total Correlation.
+        - reduction (str): 'sum' o 'mean' para las pérdidas.
+    """
+
+    def __init__(self, gamma=6.4, reduction="sum"):
+        super().__init__()
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, recon_x, x, mu, logvar, tc_logits):
+        # Reconstrucción
+        #recon_loss = F.binary_cross_entropy(recon_x, x, reduction=self.reduction)
+        recon_loss = F.mse_loss(recon_x, x, reduction=self.reduction)
+
+        # KL Divergence
+        kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        if self.reduction == "mean":
+            kl_loss /= x.size(0)
+
+        # Total Correlation (estimada por discriminador)
+        tc_loss = F.binary_cross_entropy_with_logits(
+            tc_logits, torch.ones_like(tc_logits), reduction=self.reduction
+        )
+        if self.reduction == "mean":
+            tc_loss /= x.size(0)
+
+        total = recon_loss + kl_loss + self.gamma * tc_loss
+        return total, recon_loss, kl_loss, tc_loss
+
+class FactorVAEDiscriminatorLoss(nn.Module):
+    """
+    Loss for the FactorVAE discriminator.
+    It distinguishes between real z and permuted z.
+
+    Usage:
+        d_loss = criterion_discriminator(logits_real, logits_fake)
+    """
+
+    def forward(self, logits_real, logits_fake):
+        labels_real = torch.ones_like(logits_real)
+        labels_fake = torch.zeros_like(logits_fake)
+
+        loss_real = F.binary_cross_entropy_with_logits(logits_real, labels_real, reduction="sum")
+        loss_fake = F.binary_cross_entropy_with_logits(logits_fake, labels_fake, reduction="sum")
+
+        return loss_real + loss_fake
