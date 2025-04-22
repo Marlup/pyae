@@ -486,8 +486,9 @@ class TrainingManager:
             total_loss, dis_loss = self._compute_forward_loss(batch)
             
             # Compute backpropagation
-            total_loss.backward()
-            dis_loss.backward()
+            final_loss = total_loss + dis_loss
+            final_loss.backward()
+            #dis_loss.backward()
             
             # Update weights and parameters
             self.optimizer.step()
