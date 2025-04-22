@@ -622,8 +622,8 @@ class TrainingManager:
         
         # VAE Loss
         tc_logits = logits_real
-        vae_total_loss, *_ = self._compute_forward_loss_factorVAE_vae(recon_x, z, logvar, mu, tc_logits)
-
+        vae_total_loss, *_ = self._compute_forward_loss_factorVAE_vae(recon_x, x, mu, logvar, tc_logits)
+        
         if return_outputs:
             return vae_total_loss.cpu(), vae_d_loss.cpu(), recon_x.cpu()
         return vae_total_loss.cpu(), vae_d_loss.cpu()

@@ -320,14 +320,9 @@ class FactorVAELoss(nn.Module):
         self.reduction = reduction
 
     def forward(self, recon_x, x, mu, logvar, tc_logits):
-        # Reconstrucción
+        # Reconstruction loss (MSE)
         #recon_loss = F.binary_cross_entropy(recon_x, x, reduction=self.reduction)
-        recon_loss = F.mse_loss(recon_x, x, reduction=self.reduction)
-
-        # KL Divergence
-        kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        if self.reduction == "mean":
-            kl_loss /= x.size(0)
+        recon_loss, kl_loss = vae_hybrid_loss(recon_x, x, mu, logvar, reduction=self.reduction)
 
         # Total Correlation (estimada por discriminador)
         tc_loss = F.binary_cross_entropy_with_logits(
@@ -335,7 +330,7 @@ class FactorVAELoss(nn.Module):
         )
         if self.reduction == "mean":
             tc_loss /= x.size(0)
-
+        
         total = recon_loss + kl_loss + self.gamma * tc_loss
         return total, recon_loss, kl_loss, tc_loss
 
