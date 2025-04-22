@@ -35,12 +35,13 @@ def results_training_epoch(func):
     """
     def wrapper(*args, **kwargs):
         self = args[0]
-        results, *_ = func(*args, **kwargs)
+        results = func(*args, **kwargs)
         
         # Print Loss and learning rate
         param = self.optimizer.param_groups[0]
+        loss = results[0]
         print(f"\tLearning Rate: {param['lr']}")
-        print(f"\tTraining loss: {round(results, 6)}")
+        print(f"\tTraining loss: {round(loss, 6)}")
         return results
     
     return wrapper
@@ -56,10 +57,11 @@ def results_evaluation_epoch(func):
         function: The wrapper function.
     """
     def wrapper(*args, **kwargs):
-        results, *_ = func(*args, **kwargs)
+        results = func(*args, **kwargs)
         
         # Print Loss
-        print(f"\tEval loss: {round(results, 6)}")
+        eval_loss = results[0]
+        print(f"\tEval loss: {round(eval_loss, 6)}")
         print(40 * "-")
         return results
     
