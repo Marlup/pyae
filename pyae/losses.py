@@ -314,8 +314,9 @@ class FactorVAELoss(nn.Module):
         - reduction (str): 'sum' o 'mean' para las pérdidas.
     """
 
-    def __init__(self, gamma=6.4, reduction="sum"):
+    def __init__(self, beta=0.5, gamma=5.0 , reduction="sum"):
         super().__init__()
+        self.beta = beta
         self.gamma = gamma
         self.reduction = reduction
 
@@ -331,8 +332,8 @@ class FactorVAELoss(nn.Module):
         if self.reduction == "mean":
             tc_loss /= x.size(0)
         
-        total = recon_loss + kl_loss + self.gamma * tc_loss
-        return total, recon_loss, kl_loss, tc_loss
+        total = recon_loss + self.beta * kl_loss + self.gamma * tc_loss
+        return total, recon_loss, self.beta * kl_loss, self.gamma * tc_loss
 
 class FactorVAEDiscriminatorLoss(nn.Module):
     """
