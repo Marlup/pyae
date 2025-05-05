@@ -735,15 +735,28 @@ class TrainingManager:
             learning_rate = self.initial_lr
             gamma = self.gamma
             step_size = self.step_size
-            
-        plot_losses(
-            self.train_losses, 
-            self.eval_losses, 
-            epochs=epochs,
-            learning_rate=learning_rate,
-            gamma=gamma,
-            step_size=step_size
-        )
+        
+        if self.mode == "factorVae":
+            plot_losses_disc(
+                self.train_losses, 
+                self.eval_losses, 
+                self.train_dis_losses,
+                self.eval_dis_losses,
+                epochs=epochs,
+                learning_rate=learning_rate,
+                gamma=gamma,
+                step_size=step_size
+            )
+        else:
+            plot_losses(
+                self.train_losses, 
+                self.eval_losses, 
+                epochs=epochs,
+                learning_rate=learning_rate,
+                gamma=gamma,
+                step_size=step_size
+            )
+        return 
 
     def report_model_evaluation(self, kind_plot="bar", figsize=(12, 8), on_return_dataframe=True):
         metrics_losses = []
@@ -778,6 +791,38 @@ def plot_losses(train_losses, eval_losses=None, **kwargs):
     plt.plot(train_losses, label='Training Loss')
     if eval_losses:
         plt.plot(eval_losses, label='Validation Loss')
+    
+    if learning_rate and gamma and step_size and epochs:
+        for position, _ in enumerate(get_exp_adaptive_learning(epochs, learning_rate, gamma, step_size)):
+            x = step_size * (position + 1)
+            plt.axvline(x, 0.0, 1.0, color=color, alpha=0.2)
+    
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training and Validation Losses')
+    plt.ylim(y_lim)
+    plt.legend()
+    plt.show()
+    return fig
+
+def plot_losses_disc(train_losses, eval_losses=None, dis_losses=None, eval_dis_losses=None, **kwargs):
+    fig = plt.figure()
+    y_lim = kwargs.get("y_lim", None)
+    epochs = kwargs.get("epochs", None)
+    learning_rate = kwargs.get("learning_rate", None)
+    gamma = kwargs.get("gamma", None)
+    step_size = kwargs.get("step_size", None)
+    color = kwargs.get("color", "red")
+    
+    plt.plot(train_losses, label='Training Loss')
+    if eval_losses:
+        plt.plot(eval_losses, label='Validation Loss')
+    
+    if dis_losses:
+        plt.plot(dis_losses, label='Training discriminator Loss')
+    
+    if eval_dis_losses:
+        plt.plot(eval_dis_losses, label='Validation discriminator Loss')
     
     if learning_rate and gamma and step_size and epochs:
         for position, _ in enumerate(get_exp_adaptive_learning(epochs, learning_rate, gamma, step_size)):
