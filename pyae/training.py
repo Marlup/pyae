@@ -280,7 +280,10 @@ class TrainingManager:
             self.pretrain_model()
 
         # Run main training
-        self._train_model()
+        if self.has_discriminator:
+            self._train_epoch_dis()
+        else:
+            self._train_model()
 
         # Run reset
         #self.reset_manager(True)
@@ -383,6 +386,50 @@ class TrainingManager:
         self._train_model()
     
     def _train_model(self):
+        on_early_stopping = False
+
+        for epoch in range(self.epochs):
+            print(f"Epoch {epoch + 1}/{self.epochs}")
+            print(40 * "-")
+            
+            # Train one epoch
+            epoch_loss = self._train_epoch()
+            self.train_losses.append(epoch_loss)
+
+            # Save model at checkpoint
+            can_model_checkpoint = self.on_model_checkpoint and (self.epochs > 0) and (self.epochs % self.checkpoint_frequency == 0)
+            if self.on_model_checkpoint and can_model_checkpoint:
+                self._save_state(epoch, epoch_loss)
+            
+            # Learning rate scheduler step
+            if self.lr_scheduler:
+                self.lr_scheduler.step()
+            
+            # Evaluate one epoch
+            # Run one step of early_stopping
+            if self.eval_loader is not None:
+                eval_loss = self._eval_epoch()
+                self.eval_losses.append(eval_loss)
+                
+                on_early_stopping = self._early_stopping(eval_loss)
+            
+            # Check for early stopping
+            if on_early_stopping:
+                break
+            
+            self.prev_loss = epoch_loss
+            
+            # Clear output if required
+            if epoch > 0 and epoch % self.n_display_reset == 0:
+                clear_output()
+
+        if self.on_model_checkpoint:
+            self._save_state(epoch=self.epochs, loss=self.prev_loss, on_last_model_checkpoint=True)
+        
+        self.model.eval()
+        self.discriminator.eval()
+
+    def _train_model_dis(self):
         on_early_stopping = False
 
         for epoch in range(self.epochs):
