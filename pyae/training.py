@@ -39,7 +39,7 @@ def results_training_epoch(func):
         
         # Print Loss and learning rate
         param = self.optimizer.param_groups[0]
-        loss = results[0]
+        loss = results[0] if isinstance(results, (list, tuple)) else results
         print(f"\tLearning Rate: {param['lr']}")
         print(f"\tTraining loss: {round(loss, 6)}")
         return results
