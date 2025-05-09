@@ -427,7 +427,6 @@ class TrainingManager:
             self._save_state(epoch=self.epochs, loss=self.prev_loss, on_last_model_checkpoint=True)
         
         self.model.eval()
-        self.discriminator.eval()
 
     def _train_model_dis(self):
         on_early_stopping = False
