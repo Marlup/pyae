@@ -582,7 +582,7 @@ class TrainingManager:
         return loss
     
     def _compute_forward_loss_vae(self, x, target, return_outputs=False):
-        outputs, mean, log_var = self.model(x)
+        outputs, z, mean, log_var = self.model(x)
         loss = self.criterion(outputs, target, mean, log_var)
         
         if return_outputs:
@@ -590,7 +590,7 @@ class TrainingManager:
         return loss
     
     def _compute_forward_loss_vmae(self, x, target, return_outputs=False):
-        outputs, map_outputs, mean, map_mean, log_var, map_log_var = self.model(x)
+        outputs, map_outputs, z, map_z, mean, map_mean, log_var, map_log_var = self.model(x)
         loss = self.criterion(outputs, map_outputs, target, mean, map_mean, log_var, map_log_var)
         
         if return_outputs:
