@@ -281,7 +281,7 @@ class TrainingManager:
 
         # Run main training
         if self.has_discriminator:
-            self._train_epoch_dis()
+            self._train_model_dis()
         else:
             self._train_model()
 
