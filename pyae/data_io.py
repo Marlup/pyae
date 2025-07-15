@@ -294,21 +294,20 @@ def read_xarray_dataset(path, engine="netcdf4", drop_dups=False):
     return data, columns, data_vars
 
 def build_ndarray(
-        x, 
-        values, 
-        dim, 
-        clip_to_positive=True, 
-        n_splits=1, 
-        add_noise_augmentation=False,
-        add_minmax_augmentation=False, 
-        probabilities_to_positive=None,
-        normalization_mode="minmax",
-        by_load_value=0,
-        axis_min_max=-1, 
-        on_load_target=False,
-        on_ids=False, 
-        on_squeeze_target=True
-        ):
+    x, values, dim, 
+    clip_to_positive=True, 
+    n_splits=1,
+    add_noise_augmentation=False,
+    add_minmax_augmentation=False, 
+    probabilities_to_positive=None,
+    normalization_mode="minmax",
+    by_load_value=0,
+    axis_min_max=-1, 
+    on_load_target=False,
+    on_ids=False, 
+    on_squeeze_target=True,
+    mixing_rate=0.0
+):
     """
     Builds a Numpy array of signals for processing.
 
@@ -387,9 +386,12 @@ def build_ndarray(
                                )
 
     # Modify steps that the sequence is splitted in n_splits ranges mixed within signal axis (axis=0)
-    new_n_steps = n_steps // n_splits
-    *other_dims, _ = augmented_x.shape
+    # Splitting with overlapping
+    new_n_steps = n_steps // n_splits  # define la longitud de cada fragmento
     # Split the steps dim and spread the data along the new dim 'splits' and 'step' dim
+    augmented_x = split_with_overlap(augmented_x, window_size=new_n_steps, mixing_rate=mixing_rate)
+    # Result: shape (load, sample, sensor, split, new_step)
+    
     # The shape before is (load, sample , sensor, new_step)
     augmented_x = augmented_x.reshape(*other_dims, n_splits, new_n_steps)
     # The shape afterwards is (load, sample, sensor, split, new_step)
@@ -476,3 +478,29 @@ def make_signal_ids(data):
     combinations = list(base_combinations)
     
     return pd.MultiIndex.from_tuples(combinations, names=names)
+
+def split_with_overlap(x, window_size, mixing_rate):
+    """
+    Divide la última dimensión de un array en ventanas solapadas.
+
+    Parameters:
+        - x: np.ndarray de forma (..., signal_length)
+        - window_size: longitud de cada subsignal
+        - mixing_rate: fracción de solapamiento entre 0.0 y 1.0
+
+    Returns:
+        - ndarray con forma (..., n_windows, window_size)
+    """
+    step = int(window_size * (1 - mixing_rate))
+    if step < 1:
+        raise ValueError("Step size < 1. Reduce mixing_rate or increase window_size.")
+
+    *shape_prefix, signal_len = x.shape
+    windows = []
+
+    for start in range(0, signal_len - window_size + 1, step):
+        end = start + window_size
+        window = x[..., start:end]
+        windows.append(window)
+
+    return np.stack(windows, axis=-2)
