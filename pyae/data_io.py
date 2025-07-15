@@ -389,13 +389,10 @@ def build_ndarray(
     # Splitting with overlapping
     new_n_steps = n_steps // n_splits  # define la longitud de cada fragmento
     # Split the steps dim and spread the data along the new dim 'splits' and 'step' dim
+    # Before: shape (load, sample , sensor, new_step)
     augmented_x = split_with_overlap(augmented_x, window_size=new_n_steps, mixing_rate=mixing_rate)
     # Result: shape (load, sample, sensor, split, new_step)
     
-    # The shape before is (load, sample , sensor, new_step)
-    augmented_x = augmented_x.reshape(*other_dims, n_splits, new_n_steps)
-    # The shape afterwards is (load, sample, sensor, split, new_step)
-
     # Apply min-max normalization BEFORE adding splits
     if normalization_mode == "minmax":
         augmented_x = min_max_scale(augmented_x, axis=axis_min_max)
