@@ -1,21 +1,24 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+from dataclasses import dataclass
+from typing import Optional, List, Tuple
+
 
 ##################################
 #### NN architecture modeling ####
 ##################################
 
-class AutoencoderLayerBuilder(nn.Module):
+class AutoencoderNetworkBuilder(nn.Module):
     """
-    AutoencoderLayerBuilder is a custom neural network module that facilitates the addition of various layers 
+    AutoencoderNetworkBuilder is a custom neural network module that facilitates the addition of various layers 
     such as fully connected layers, convolutional layers, transposed convolutional layers, and more. 
     It provides a convenient interface to build complex neural network architectures dynamically, specifically 
     for autoencoders.
     """
 
     def __init__(self):
-        super(AutoencoderLayerBuilder, self).__init__()
+        super(AutoencoderNetworkBuilder, self).__init__()
         self.layers = nn.Sequential()
 
         self.last_input_length = 0
@@ -309,7 +312,7 @@ class AutoencoderLayerBuilder(nn.Module):
         self.latent.requires_grad_(next_requires_grad)
         self.decoder.requires_grad_(next_requires_grad)
 
-class CategoricalEncoder(AutoencoderLayerBuilder):
+class CategoricalEncoder(AutoencoderNetworkBuilder):
     """
     CategoricalEncoder is a custom neural network module designed to encode categorical variables
     into a dense representation. It includes a fully connected layer, an optional activation function,
@@ -344,7 +347,168 @@ class CategoricalEncoder(AutoencoderLayerBuilder):
             return x.unsqueeze(1)
         return x
 
-class FullyConnectedEncoder(AutoencoderLayerBuilder):
+
+@dataclass
+class FCLayerConfig:
+    units: int
+    activation: Optional[str] = None
+    bias: bool = True
+    dropout: float = 0.0
+    batch_norm: bool = False
+
+
+@dataclass
+class Conv1DLayerConfig:
+    out_channels: int
+    kernel_size: int
+    stride: int
+    padding: int
+    activation: Optional[str] = None
+    pool: Optional[Tuple[str, ...]] = None
+    bias: bool = True
+    dropout: float = 0.0
+    batch_norm: bool = False
+
+
+@dataclass
+class TransposedConv1DLayerConfig:
+    out_channels: int
+    kernel_size: int
+    stride: int
+    padding: int
+    output_padding: int
+    activation: Optional[str] = None
+    bias: bool = True
+    dropout: float = 0.0
+    batch_norm: bool = False
+
+
+class LayerFactory:
+    @staticmethod
+    def activation(name: str, alpha: float = 0.25) -> nn.Module:
+        match name:
+            case 'relu': return nn.ReLU()
+            case 'elu': return nn.ELU()
+            case 'prelu': return nn.PReLU(init=alpha)
+            case 'leaky_relu': return nn.LeakyReLU()
+            case 'sigmoid': return nn.Sigmoid()
+            case 'tanh': return nn.Tanh()
+            case 'softmax': return nn.Softmax(dim=1)
+            case _: raise ValueError(f"Unsupported activation: {name}")
+
+    @staticmethod
+    def fc(input_dim: int, cfg: FCLayerConfig) -> nn.Sequential:
+        layers = [nn.Linear(input_dim, cfg.units, bias=cfg.bias)]
+        if cfg.batch_norm:
+            layers.append(nn.BatchNorm1d(cfg.units))
+        if cfg.activation:
+            layers.append(LayerFactory.activation(cfg.activation))
+        if 0.0 < cfg.dropout < 1.0:
+            layers.append(nn.Dropout(cfg.dropout))
+        return nn.Sequential(*layers)
+
+    @staticmethod
+    def conv1d(in_channels: int, cfg: Conv1DLayerConfig) -> nn.Sequential:
+        layers = [
+            nn.Conv1d(in_channels, cfg.out_channels, cfg.kernel_size, cfg.stride, cfg.padding, bias=cfg.bias)
+        ]
+        if cfg.pool:
+            name, *params = cfg.pool
+            if name == 'max_pool':
+                layers.append(nn.MaxPool1d(*params))
+            elif name == 'avg_pool':
+                layers.append(nn.AvgPool1d(*params))
+            elif name == 'upsample':
+                layers.append(nn.Upsample(*params, mode='linear', align_corners=True))
+            else:
+                raise ValueError(f"Unknown pooling type: {name}")
+        if cfg.activation:
+            layers.append(LayerFactory.activation(cfg.activation))
+        if cfg.batch_norm:
+            layers.append(nn.BatchNorm1d(cfg.out_channels))
+        if 0.0 < cfg.dropout < 1.0:
+            layers.append(nn.Dropout(cfg.dropout))
+        return nn.Sequential(*layers)
+
+    @staticmethod
+    def transposed_conv1d(in_channels: int, cfg: TransposedConv1DLayerConfig) -> nn.Sequential:
+        layers = [
+            nn.ConvTranspose1d(
+                in_channels, cfg.out_channels, cfg.kernel_size, cfg.stride,
+                cfg.padding, output_padding=cfg.output_padding, bias=cfg.bias
+            )
+        ]
+        if cfg.activation:
+            layers.append(LayerFactory.activation(cfg.activation))
+        if cfg.batch_norm:
+            layers.append(nn.BatchNorm1d(cfg.out_channels))
+        if 0.0 < cfg.dropout < 1.0:
+            layers.append(nn.Dropout(cfg.dropout))
+        return nn.Sequential(*layers)
+
+
+class NetworkBuilder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layers: List[nn.Module] = []
+        self.last_input_length = 0
+        self.last_input_channel = 0
+
+    def add_fc_layer(self, cfg: FCLayerConfig, flatten: bool = False, start_dim: int = 1):
+        if flatten:
+            self.layers.append(nn.Flatten(start_dim=start_dim))
+        layer = LayerFactory.fc(self.last_input_length, cfg)
+        self.last_input_length = cfg.units
+        self.layers.append(layer)
+
+    def add_fc_layers(self, cfgs: List[FCLayerConfig], flatten_first: bool = False):
+        for i, cfg in enumerate(cfgs):
+            self.add_fc_layer(cfg, flatten=flatten_first)
+            flatten_first = False
+
+    def add_conv_layer(self, cfg: Conv1DLayerConfig):
+        layer = LayerFactory.conv1d(self.last_input_channel, cfg)
+        self.last_input_channel = cfg.out_channels
+        self.layers.append(layer)
+
+    def add_conv_layers(self, cfgs: List[Conv1DLayerConfig]):
+        for cfg in cfgs:
+            self.add_conv_layer(cfg)
+
+    def add_transposed_conv_layer(self, cfg: TransposedConv1DLayerConfig):
+        layer = LayerFactory.transposed_conv1d(self.last_input_channel, cfg)
+        self.last_input_channel = cfg.out_channels
+        self.layers.append(layer)
+
+    def add_transposed_conv_layers(self, cfgs: List[TransposedConv1DLayerConfig]):
+        for cfg in cfgs:
+            self.add_transposed_conv_layer(cfg)
+
+    def build(self) -> nn.Sequential:
+        return nn.Sequential(*self.layers)
+
+    def forward(self, x):
+        return self.build()(x)
+
+    def summarize(self, input_shape):
+        from torchinfo import summary
+        model = self.build()
+        print(summary(model, input_size=input_shape))
+
+    def freeze_all(self):
+        for p in self.parameters():
+            p.requires_grad = False
+
+    def unfreeze_all(self):
+        for p in self.parameters():
+            p.requires_grad = True
+
+    def show_frozen_status(self):
+        for i, p in enumerate(self.parameters()):
+            print(f"Param {i}: shape={tuple(p.shape)}, requires_grad={p.requires_grad}")
+
+
+class FullyConnectedEncoder(AutoencoderNetworkBuilder):
     """
     FullyConnectedEncoder is a custom neural network module designed to encode input data
     through fully connected layers with customizable specifications.
@@ -376,7 +540,7 @@ class FullyConnectedEncoder(AutoencoderLayerBuilder):
     def forward(self, x):
         return self.layers(x)
 
-class FullyConnectedDecoder(AutoencoderLayerBuilder):
+class FullyConnectedDecoder(AutoencoderNetworkBuilder):
     """
     FullyConnectedDecoder is a custom neural network module designed to decode input data
     through fully connected layers with customizable specifications.
@@ -408,7 +572,7 @@ class FullyConnectedDecoder(AutoencoderLayerBuilder):
     def forward(self, x):
         return self.layers(x)
 
-class ConvEncoder(AutoencoderLayerBuilder):
+class ConvEncoder(AutoencoderNetworkBuilder):
     """
     ConvEncoder is a custom neural network module designed to encode input data
     through convolutional layers with customizable specifications.
@@ -447,7 +611,7 @@ class ConvEncoder(AutoencoderLayerBuilder):
     def forward(self, x):
         return self.layers(x)
 
-class ConvDecoder(AutoencoderLayerBuilder):
+class ConvDecoder(AutoencoderNetworkBuilder):
     """
     Convolutional Decoder module.
 
@@ -476,7 +640,7 @@ class ConvDecoder(AutoencoderLayerBuilder):
     def forward(self, x):
         return self.layers(x)
 
-class ConvAutoencoderImplicit(AutoencoderLayerBuilder):
+class ConvAutoencoderImplicit(AutoencoderNetworkBuilder):
     def __init__(
         self, 
         input_length: int, 
@@ -526,7 +690,7 @@ class ConvAutoencoderImplicit(AutoencoderLayerBuilder):
         from pyae.utils import get_decoder_target_lengths
         return get_decoder_target_lengths(self.encoder, input_shape)
 
-class ConvAutoencoderLatentFC1(AutoencoderLayerBuilder):
+class ConvAutoencoderLatentFC1(AutoencoderNetworkBuilder):
     def __init__(
         self, 
         input_length: int, 
@@ -583,7 +747,7 @@ class ConvAutoencoderLatentFC1(AutoencoderLayerBuilder):
         from pyae.utils import get_decoder_target_lengths
         return get_decoder_target_lengths(self.encoder, input_shape)
 
-class VariationalLatent(AutoencoderLayerBuilder):
+class VariationalLatent(AutoencoderNetworkBuilder):
     """
     VariationalBuilds a a custom neural network module designed to parameterize
     the mean and log-variance of a latent space in a variational autoencoder (VAE).
@@ -650,7 +814,7 @@ class VariationalLatent(AutoencoderLayerBuilder):
         z = mean + std + eps
         return z
 
-class LatentFC1(AutoencoderLayerBuilder):
+class LatentFC1(AutoencoderNetworkBuilder):
     """
     Builds a a custom neural network with only 1 fully-connected layer module representing 
     the latent space in an autoencoder.
@@ -698,7 +862,7 @@ class LatentFC1(AutoencoderLayerBuilder):
     def set_pad_to_outputs(self, inputs):
         return torch.nn.functional.pad(inputs, pad=(self.pad, self.pad), mode=self.mode)
 
-class LatentFC3(AutoencoderLayerBuilder):
+class LatentFC3(AutoencoderNetworkBuilder):
     """
     Builds a a custom neural network with only 3 fully-connected layer module representing 
     the latent space in an autoencoder.
@@ -749,7 +913,7 @@ class LatentFC3(AutoencoderLayerBuilder):
             return x.view(self.output_reshape)  # Shape (batch, channel, length)
         return x
         
-class DCECLatentFC3(AutoencoderLayerBuilder):
+class DCECLatentFC3(AutoencoderNetworkBuilder):
     """
     Builds a a custom neural network with only 3 fully-connected layer module representing 
     the latent space in an autoencoder for Deep Convolutional Embedded Clustering (DCEC).
@@ -797,7 +961,7 @@ class DCECLatentFC3(AutoencoderLayerBuilder):
             return x.view(self.output_reshape), z  # Shape (batch, channel, length)
         return x, z
         
-class EnsembleLatentFC3(AutoencoderLayerBuilder):
+class EnsembleLatentFC3(AutoencoderNetworkBuilder):
     """
     Builds a a custom neural network with only 3 fully-connected layer module representing 
     the latent space in an autoencoder.
@@ -889,7 +1053,7 @@ class EnsembleLatentFC3(AutoencoderLayerBuilder):
         
         return x.view(self.output_reshape)  # Shape (batch, channel, length)
 
-class ClusteringLayer(AutoencoderLayerBuilder):
+class ClusteringLayer(AutoencoderNetworkBuilder):
     """
     ClusteringLayer is a custom neural network module representing the clustering centers branch
     from the autoencoder latent layer.
