@@ -81,28 +81,64 @@ def load_model_state_dict(path, on_eval=False):
 ##################
 
 @report_time
-def read_impedances(data_path="", on_array: bool=True, **kwargs) -> np.ndarray:
+def read_emis(
+    data_path="",
+    stack_ranges=True,
+    file_regex="*.xlsx",
+    version_sep="_",
+    file_format="xlsx",
+) -> np.ndarray:
     """
-    Reads all the .xlsx files from the swept tests directory 
-    and arranges the data into shape (load, sweep, sensor, row, col)
-    
-    Returns:
-        A NumPy array containing the data extracted from the .xlsx files.
+    Reads .xlsx files from the directory and returns a DataFrame instead of an array.
     """
-    file_regex = kwargs.get("file_regex", "*.xlsx")
-    version_sep = kwargs.get("version_sep", "_")
-    file_format = kwargs.get("file_format", "xlsx")
 
     dataset = []
-    path = os.path.join(data_path, file_regex)
-    for f_name in sorted(glob(path), key=lambda x: int(x.split(".")[0].split(version_sep)[-1])):
-        print(f"Reading: {f_name}")
+    for f_name in sorted(glob(os.path.join(data_path, file_regex)),
+                         key=lambda x: int(x.split(".")[0].split(version_sep)[-1])):
         if not f_name.endswith(file_format):
             continue
-        dataset.append(_read_sheet(f_name, **kwargs))
-    if on_array:
-        return np.array(dataset)
-    return dataset
+        print(f"Reading: {f_name}")
+        dataset.append(_read_sheet(f_name, n_features=3, stack_ranges=stack_ranges))
+
+    return np.array(dataset)
+
+@report_time
+def read_emis_to_dataframe(
+    data_path="",
+    stack_ranges=True,
+    file_regex="*.xlsx",
+    version_sep="_",
+    file_format="xlsx",
+    column_names=None,
+    index_names=None,
+) -> DataFrame:
+    """
+    Reads .xlsx files from the directory and returns a DataFrame instead of an array.
+    """
+    data = read_emis(
+        data_path=data_path,
+        stack_ranges=stack_ranges,
+        file_regex=file_regex,
+        version_sep=version_sep,
+        file_format=file_format,
+    )
+
+    # Build index combinations
+    if stack_ranges:
+        n_loads, n_sweeps, n_sensors, n_steps, n_vars = data.shape
+        index_names = index_names or ["load", "sweep", "sensor", "freq_step"]
+        combs = product(range(n_loads), range(n_sweeps), range(n_sensors), range(n_steps))
+    else:
+        n_loads, n_sweeps, n_sensors, n_ranges, n_steps, n_vars = data.shape
+        index_names = index_names or ["load", "sweep", "sensor", "freq_range", "freq_step"]
+        combs = product(range(n_loads), range(n_sweeps), range(n_sensors), range(n_ranges), range(n_steps))
+
+    df = DataFrame(
+        data.reshape(-1, n_vars),
+        index=MultiIndex.from_tuples(list(combs), names=index_names),
+        columns=column_names
+    )
+    return df
 
 def write_hdf5_file(
     f_name="", 
@@ -232,7 +268,7 @@ def read_and_format_to_dataframe(data_path, stack_ranges=True, columns_names=Non
         column_names = ["frequency", "real", "imaginary"]
     
     # Read the data, parsed it into an nd-array
-    data = read_impedances(data_path=data_path, 
+    data = read_emis(data_path=data_path, 
                            stack_ranges=stack_ranges)
 
     # Set default index names
@@ -269,6 +305,7 @@ def read_and_format_to_dataframe(data_path, stack_ranges=True, columns_names=Non
                      columns=column_names
                     )
 
+@PendingDeprecationWarning
 def read_xarray_dataset(path, engine="netcdf4", drop_dups=False):
     """
     Reads a dataset from a specified path using xarray.
