@@ -11,7 +11,7 @@ from yaml import safe_load as load
 
 from evaluation import plot_reconstruction
 from utils.plotting import plot_losses
-from training.training import TrainingManager
+from pyae.training.managers import TrainingManager
 
 
 def run_experiment(
