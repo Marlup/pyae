@@ -176,3 +176,10 @@ def update_overlap(frame, *args, **kwargs):
 
 def get_timestamp(sep="_"):
     return datetime.now().strftime(f"%Y-%m-%d{sep}%H-%M")
+
+def get_exp_adaptive_learning(epochs, lr=0.1, gamma=0.5, step_size=10):
+    if epochs >= step_size:
+        n_steps = epochs // step_size
+        #print([(f"Reduction {i}", lr * gamma**i) for i in range(n_reductions)])
+        return [lr * gamma**i for i in range(n_steps)]
+    return []

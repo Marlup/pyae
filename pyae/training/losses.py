@@ -25,7 +25,7 @@ class AreaBetweenCurvesLoss(nn.Module):
     """
 
     def __init__(self, dx=1, dim=-1, on_reduce=True):
-        super(AreaBetweenCurvesLoss, self).__init__()
+        super().__init__()
     
         self.dx = dx
         self.dim = dim

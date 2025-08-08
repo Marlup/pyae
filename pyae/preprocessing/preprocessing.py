@@ -1,11 +1,53 @@
 import torch
+
+import pandas as pd
 import numpy as np
 import xarray as xr
-from .constant import RANDOM_STATE
+
+from itertools import product
+from typing import List, Optional
+
+from ..constant import RANDOM_STATE
+
 
 ############################
 #### Data preprocessing #### 
 ############################
+
+def normalize(x: np.ndarray, axis: int = -1, method: Optional[str] = None):
+    if method == "minmax":
+        min_val = x.min(axis=axis, keepdims=True)
+        max_val = x.max(axis=axis, keepdims=True)
+        return (x - min_val) / (max_val - min_val + 1e-8)
+    elif method == "max":
+        max_val = x.max(axis=axis, keepdims=True)
+        return x / (max_val + 1e-8)
+    return x
+
+def make_target_from_load(data: np.ndarray, squeeze=True):
+    n_loads, n_samples, n_sensors, n_splits, _ = data.shape
+    n = n_samples * n_sensors * n_splits
+    target = np.repeat(np.arange(n_loads), repeats=n)
+    return target.squeeze() if squeeze else np.expand_dims(target, axis=-1)
+
+def make_signal_ids(data: np.ndarray) -> pd.MultiIndex:
+    n_loads, n_samples, n_sensors, n_splits, _ = data.shape
+    base_combinations = product(
+        range(n_loads), range(n_samples), range(n_sensors), range(n_splits)
+    )
+    return pd.MultiIndex.from_tuples(list(base_combinations), names=["load", "sample", "sensor", "split"])
+
+def split_with_overlap(x: np.ndarray, window_size: int, mixing_rate: float) -> np.ndarray:
+    step = int(window_size * (1 - mixing_rate))
+    if step < 1:
+        raise ValueError("Step size < 1. Reduce mixing_rate or increase window_size.")
+
+    *prefix, signal_len = x.shape
+    windows = [x[..., i:i+window_size] for i in range(0, signal_len - window_size + 1, step)]
+    return np.stack(windows, axis=-2)
+
+def apply_augmentations(x: np.ndarray, augmentations: List[np.ndarray]) -> np.ndarray:
+    return np.hstack([x] + augmentations) if augmentations else x
 
 def generate_noisy_signals(x, amplitudes=None):
     """
@@ -105,6 +147,67 @@ def generate_synthetic_signal(x, probabilities_to_positive=None, axis=-3, return
     
     return synthetic_signals
 
+def min_max_scale(x, axis=-1, keepdims=True, eps=1e-9, by_load_value=None):
+    """
+    Apply min-max normalization on data 'x', along the dimension 'axis' parameter.
+    
+    Args:
+        x (numpy.ndarray or torch.Tensor or xarray.DataArray): A data array or tensor.
+        axis (int): The axis along which to apply the min and max aggregations.
+        keepdims (bool): If True, the aggregated axis is not squeezed, i.e., it is not dropped 
+                        from the data.
+        eps (float): A small value to avoid division by zero.
+
+    Returns:
+        numpy.ndarray or torch.Tensor or xarray.DataArray: A normalized array or tensor.
+    """
+    if not isinstance(x, (np.ndarray, torch.Tensor, xr.DataArray)):
+        raise TypeError("'x' should be either a numpy.ndarray, a torch.Tensor, or a xarray.DataArray.")
+
+    min_val, max_val = _get_min_max(x, axis, keepdims, by_load_value)
+    
+    # Apply min-max normalization
+    scaled_x = (x - min_val) / (max_val - min_val + eps)
+    return scaled_x
+
+def max_scale(x, axis=-1, keepdims=True, eps=1e-9, by_load_value=None):
+    """
+    Apply max normalization on data 'x', along the dimension 'axis' parameter.
+    
+    Args:
+        x (numpy.ndarray or torch.Tensor or xarray.DataArray): A data array or tensor.
+        axis (int): The axis along which to apply the min and max aggregations.
+        keepdims (bool): If True, the aggregated axis is not squeezed, i.e., it is not dropped 
+                        from the data.
+        eps (float): A small value to avoid division by zero.
+
+    Returns:
+        numpy.ndarray or torch.Tensor or xarray.DataArray: A normalized array or tensor.
+    """
+    if not isinstance(x, (np.ndarray, torch.Tensor, xr.DataArray)):
+        raise TypeError("'x' should be either a numpy.ndarray, a torch.Tensor, or a xarray.DataArray.")
+    
+    # Compute min and max values along the specified axis
+    _, max_val = _get_min_max(x, axis, keepdims, by_load_value)
+    
+    # Apply min-max normalization
+    scaled_x = x / (max_val + eps)
+    return scaled_x
+
+def _get_min_max(x, axis=-1, keepdims=True, by_load_value=None):
+    if isinstance(by_load_value, (list, tuple)):
+        by_load_value = by_load_value[0]
+    
+    if by_load_value is not None:
+        # Compute min and max values along the specified axis
+        x = x[[by_load_value]]
+        x = x[[by_load_value]]
+    
+    min_val = x.min(axis=axis, keepdims=keepdims)
+    max_val = x.max(axis=axis, keepdims=keepdims)
+
+    return min_val, max_val
+
 def _generate_positive_variation(n_points, n_categories):
     """
     Generate a matrix of positive variation ratios between 0 and 1.
@@ -166,64 +269,3 @@ def _generate_min_max(x, axis):
             x.max(axis),
         ]
     )
-
-def min_max_scale(x, axis=-1, keepdims=True, eps=1e-9, by_load_value=None):
-    """
-    Apply min-max normalization on data 'x', along the dimension 'axis' parameter.
-    
-    Args:
-        x (numpy.ndarray or torch.Tensor or xarray.DataArray): A data array or tensor.
-        axis (int): The axis along which to apply the min and max aggregations.
-        keepdims (bool): If True, the aggregated axis is not squeezed, i.e., it is not dropped 
-                        from the data.
-        eps (float): A small value to avoid division by zero.
-
-    Returns:
-        numpy.ndarray or torch.Tensor or xarray.DataArray: A normalized array or tensor.
-    """
-    if not isinstance(x, (np.ndarray, torch.Tensor, xr.DataArray)):
-        raise TypeError("'x' should be either a numpy.ndarray, a torch.Tensor, or a xarray.DataArray.")
-
-    min_val, max_val = get_min_max(x, axis, keepdims, by_load_value)
-    
-    # Apply min-max normalization
-    scaled_x = (x - min_val) / (max_val - min_val + eps)
-    return scaled_x
-
-def max_scale(x, axis=-1, keepdims=True, eps=1e-9, by_load_value=None):
-    """
-    Apply max normalization on data 'x', along the dimension 'axis' parameter.
-    
-    Args:
-        x (numpy.ndarray or torch.Tensor or xarray.DataArray): A data array or tensor.
-        axis (int): The axis along which to apply the min and max aggregations.
-        keepdims (bool): If True, the aggregated axis is not squeezed, i.e., it is not dropped 
-                        from the data.
-        eps (float): A small value to avoid division by zero.
-
-    Returns:
-        numpy.ndarray or torch.Tensor or xarray.DataArray: A normalized array or tensor.
-    """
-    if not isinstance(x, (np.ndarray, torch.Tensor, xr.DataArray)):
-        raise TypeError("'x' should be either a numpy.ndarray, a torch.Tensor, or a xarray.DataArray.")
-    
-    # Compute min and max values along the specified axis
-    _, max_val = get_min_max(x, axis, keepdims, by_load_value)
-    
-    # Apply min-max normalization
-    scaled_x = x / (max_val + eps)
-    return scaled_x
-
-def get_min_max(x, axis=-1, keepdims=True, by_load_value=None):
-    if isinstance(by_load_value, (list, tuple)):
-        by_load_value = by_load_value[0]
-    
-    if by_load_value is not None:
-        # Compute min and max values along the specified axis
-        x = x[[by_load_value]]
-        x = x[[by_load_value]]
-    
-    min_val = x.min(axis=axis, keepdims=keepdims)
-    max_val = x.max(axis=axis, keepdims=keepdims)
-
-    return min_val, max_val
