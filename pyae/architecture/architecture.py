@@ -2,8 +2,9 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from dataclasses import dataclass
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Union
 
+from utils.miscellaneous import get_decoder_target_lengths
 
 ##################################
 #### NN architecture modeling ####
@@ -12,7 +13,7 @@ from typing import Optional, List, Tuple
 class AutoencoderNetworkBuilder(nn.Module):
     """
     AutoencoderNetworkBuilder is a custom neural network module that facilitates the addition of various layers 
-    such as fully connected layers, convolutional layers, transposed convolutional layers, and more. 
+    such as dense layers, convolutional layers, transposed convolutional layers, and more. 
     It provides a convenient interface to build complex neural network architectures dynamically, specifically 
     for autoencoders.
     """
@@ -24,9 +25,9 @@ class AutoencoderNetworkBuilder(nn.Module):
         self.last_input_length = 0
         self.last_input_channel = 0
 
-    def add_fc_layer(self, params: list, on_flatten=False, start_dim=1):
+    def add_dense_block(self, params: list, on_flatten=False, start_dim=1):
         """
-        Adds a fully connected (dense) layer to the model.
+        Adds a dense (dense) layer to the model.
         
         Args:
             params (list): A list containing layer parameters [units, activation, bias, p_dropout, has_batch_norm].
@@ -52,20 +53,20 @@ class AutoencoderNetworkBuilder(nn.Module):
         
         self.layers.append(layers)
         
-    def add_fc_layers(self, fc_params: list, on_flatten_first=False):
+    def add_dense_blocks(self, dense_params: list, on_flatten_first=False):
         """
-        Adds multiple fully connected (dense) layers to the model.
+        Adds multiple dense (dense) layers to the model.
         
         Args:
-            fc_params (list): A list of parameter lists for each fully connected layer.
+            dense_params (list): A list of parameter lists for each dense layer.
         """
-        for params in fc_params:
-            self.add_fc_layer(params, on_flatten_first)
+        for params in dense_params:
+            self.add_dense_block(params, on_flatten_first)
             
             if on_flatten_first:
                 on_flatten_first = False
                 
-    def add_conv_layer(self, params):
+    def add_conv_block(self, params):
         """
         Adds a 1D convolutional layer to the model.
         
@@ -96,7 +97,7 @@ class AutoencoderNetworkBuilder(nn.Module):
 
         self.layers.append(layers)
 
-    def add_conv_layers(self, conv_params: list):
+    def add_conv_blocks(self, conv_params: list):
         """
         Adds multiple 1D convolutional layers to the model.
         
@@ -104,9 +105,9 @@ class AutoencoderNetworkBuilder(nn.Module):
             conv_params (list): A list of parameter lists for each convolutional layer.
         """
         for params in conv_params:
-            self.add_conv_layer(params)
+            self.add_conv_block(params)
     
-    def add_transp_conv_layer(self, params):
+    def add_transp_conv_block(self, params):
         """
         Adds a 1D transposed convolutional layer to the model.
         
@@ -138,7 +139,7 @@ class AutoencoderNetworkBuilder(nn.Module):
 
         self.layers.append(layers)
 
-    def add_transp_conv_layers(self, transp_conv_params: list):
+    def add_transp_conv_blocks(self, transp_conv_params: list):
         """
         Adds multiple 1D transposed convolutional layers to the model.
         
@@ -146,7 +147,7 @@ class AutoencoderNetworkBuilder(nn.Module):
             transp_conv_params (list): A list of parameter lists for each transposed convolutional layer.
         """
         for params in transp_conv_params:
-            self.add_transp_conv_layer(params)
+            self.add_transp_conv_block(params)
     
     def add_batch_norm(self, n: int=1):
         """
@@ -315,7 +316,7 @@ class AutoencoderNetworkBuilder(nn.Module):
 class CategoricalEncoder(AutoencoderNetworkBuilder):
     """
     CategoricalEncoder is a custom neural network module designed to encode categorical variables
-    into a dense representation. It includes a fully connected layer, an optional activation function,
+    into a dense representation. It includes a dense layer, an optional activation function,
     and optional batch normalization.
 
     Args:
@@ -339,7 +340,7 @@ class CategoricalEncoder(AutoencoderNetworkBuilder):
         self.last_input_length = input_length
         self.layers = nn.Sequential()
         
-        self.add_fc_layer([output_length, activation, bias, 0.0, has_batch_norm])
+        self.add_dense_block([output_length, activation, bias, 0.0, has_batch_norm])
     
     def forward(self, x):
         x = self.layers(x)
@@ -369,14 +370,20 @@ class Conv1DLayerConfig:
     dropout: float = 0.0
     batch_norm: bool = False
 
+@dataclass
+class Upsample1DLayerConfig:
+    scale_factor: int
+    mode: str = "linear"
+    align_corners: bool = True
+
 
 @dataclass
 class TransposedConv1DLayerConfig:
     out_channels: int
     kernel_size: int
-    stride: int
-    padding: int
-    output_padding: int
+    stride: int = 1  # always 1
+    padding: int = 1
+    output_padding: int = 0  # unused now
     activation: Optional[str] = None
     bias: bool = True
     dropout: float = 0.0
@@ -397,7 +404,7 @@ class LayerFactory:
             case _: raise ValueError(f"Unsupported activation: {name}")
 
     @staticmethod
-    def fc(input_dim: int, cfg: FCLayerConfig) -> nn.Sequential:
+    def dense(input_dim: int, cfg: FCLayerConfig) -> nn.Sequential:
         layers = [nn.Linear(input_dim, cfg.units, bias=cfg.bias)]
         if cfg.batch_norm:
             layers.append(nn.BatchNorm1d(cfg.units))
@@ -445,6 +452,13 @@ class LayerFactory:
         if 0.0 < cfg.dropout < 1.0:
             layers.append(nn.Dropout(cfg.dropout))
         return nn.Sequential(*layers)
+    
+    @staticmethod
+    def upsample1d(cfg: Upsample1DLayerConfig) -> nn.Module:
+        if cfg.scale_factor is None and cfg.size is None:
+            raise ValueError("Upsample1DLayerConfig must specify either scale_factor or size.")
+        return nn.Upsample(scale_factor=cfg.scale_factor, size=cfg.size, mode=cfg.mode, align_corners=cfg.align_corners)
+
 
 
 class NetworkBuilder(nn.Module):
@@ -454,26 +468,26 @@ class NetworkBuilder(nn.Module):
         self.last_input_length = 0
         self.last_input_channel = 0
 
-    def add_fc_layer(self, cfg: FCLayerConfig, flatten: bool = False, start_dim: int = 1):
+    def add_dense_block(self, cfg: FCLayerConfig, flatten: bool = False, start_dim: int = 1):
         if flatten:
             self.layers.append(nn.Flatten(start_dim=start_dim))
-        layer = LayerFactory.fc(self.last_input_length, cfg)
+        layer = LayerFactory.dense(self.last_input_length, cfg)
         self.last_input_length = cfg.units
         self.layers.append(layer)
 
-    def add_fc_layers(self, cfgs: List[FCLayerConfig], flatten_first: bool = False):
-        for i, cfg in enumerate(cfgs):
-            self.add_fc_layer(cfg, flatten=flatten_first)
+    def add_dense_blocks(self, cfgs: List[FCLayerConfig], flatten_first: bool = False):
+        for cfg in cfgs:
+            self.add_dense_block(cfg, flatten=flatten_first)
             flatten_first = False
 
-    def add_conv_layer(self, cfg: Conv1DLayerConfig):
+    def add_conv_block(self, cfg: Conv1DLayerConfig):
         layer = LayerFactory.conv1d(self.last_input_channel, cfg)
         self.last_input_channel = cfg.out_channels
         self.layers.append(layer)
 
-    def add_conv_layers(self, cfgs: List[Conv1DLayerConfig]):
+    def add_conv_blocks(self, cfgs: List[Conv1DLayerConfig]):
         for cfg in cfgs:
-            self.add_conv_layer(cfg)
+            self.add_conv_block(cfg)
 
     def add_transposed_conv_layer(self, cfg: TransposedConv1DLayerConfig):
         layer = LayerFactory.transposed_conv1d(self.last_input_channel, cfg)
@@ -483,6 +497,19 @@ class NetworkBuilder(nn.Module):
     def add_transposed_conv_layers(self, cfgs: List[TransposedConv1DLayerConfig]):
         for cfg in cfgs:
             self.add_transposed_conv_layer(cfg)
+    
+    def add_upsample_layer(self, cfg: Upsample1DLayerConfig):
+        self.layers.append(LayerFactory.upsample1d(cfg))
+
+    def add_upsample_and_conv_layers(self, cfgs: List[Union[Upsample1DLayerConfig, TransposedConv1DLayerConfig]]):
+        for cfg in cfgs:
+            if isinstance(cfg, Upsample1DLayerConfig):
+                self.add_upsample_layer(cfg)
+            elif isinstance(cfg, TransposedConv1DLayerConfig):
+                self.add_transposed_conv_layer(cfg)
+            else:
+                raise ValueError(f"Unsupported config type: {type(cfg)}")
+
 
     def build(self) -> nn.Sequential:
         return nn.Sequential(*self.layers)
@@ -495,23 +522,15 @@ class NetworkBuilder(nn.Module):
         model = self.build()
         print(summary(model, input_size=input_shape))
 
-    def freeze_all(self):
-        for p in self.parameters():
-            p.requires_grad = False
-
-    def unfreeze_all(self):
-        for p in self.parameters():
-            p.requires_grad = True
-
-    def show_frozen_status(self):
+    def show_parameters(self):
         for i, p in enumerate(self.parameters()):
             print(f"Param {i}: shape={tuple(p.shape)}, requires_grad={p.requires_grad}")
 
 
-class FullyConnectedEncoder(AutoencoderNetworkBuilder):
+class DenseEncoder(AutoencoderNetworkBuilder):
     """
-    FullyConnectedEncoder is a custom neural network module designed to encode input data
-    through fully connected layers with customizable specifications.
+    DenseEncoder is a custom neural network module designed to encode input data
+    through dense layers with customizable specifications.
     """
 
     def __init__(self, input_length, layer_specifications: list, **kwargs):
@@ -527,7 +546,7 @@ class FullyConnectedEncoder(AutoencoderNetworkBuilder):
         if len(layer_specifications) < 1:
             raise Exception("Input error. 'layer_specifications' length is 0")
         
-        super(FullyConnectedEncoder, self).__init__()
+        super().__init__()
 
         # Encoder attributes
         self.input_length = input_length
@@ -535,15 +554,15 @@ class FullyConnectedEncoder(AutoencoderNetworkBuilder):
         self.layer_specifications = layer_specifications
         self.layers = nn.Sequential()
         
-        self.add_fc_layers(layer_specifications)
+        self.add_dense_blocks(layer_specifications)
 
     def forward(self, x):
         return self.layers(x)
 
-class FullyConnectedDecoder(AutoencoderNetworkBuilder):
+class DenseDecoder(AutoencoderNetworkBuilder):
     """
-    FullyConnectedDecoder is a custom neural network module designed to decode input data
-    through fully connected layers with customizable specifications.
+    DenseDecoder is a custom neural network module designed to decode input data
+    through dense layers with customizable specifications.
     """
 
     def __init__(self, input_length: int, layer_specifications: list, **kwargs):
@@ -559,7 +578,7 @@ class FullyConnectedDecoder(AutoencoderNetworkBuilder):
         if len(layer_specifications) < 1:
             raise Exception("Input error. 'layer_specifications' length is 0")
         
-        super(FullyConnectedDecoder, self).__init__()
+        super().__init__()
         
         self.input_length = input_length
         self.last_input_length = input_length
@@ -567,7 +586,7 @@ class FullyConnectedDecoder(AutoencoderNetworkBuilder):
         self.layers = nn.Sequential()
         
         # Hidden layer
-        self.add_fc_layers(layer_specifications)
+        self.add_dense_blocks(layer_specifications)
         
     def forward(self, x):
         return self.layers(x)
@@ -603,7 +622,7 @@ class ConvEncoder(AutoencoderNetworkBuilder):
         self.on_global_pool = on_global_pool
         
         # Layers
-        self.add_conv_layers(layer_specifications)
+        self.add_conv_blocks(layer_specifications)
 
         if self.on_global_pool:
             self.layers.append(self.add_adaptive_pooling("max", 1))
@@ -623,7 +642,7 @@ class ConvDecoder(AutoencoderNetworkBuilder):
         if not isinstance(layer_specs, list):
             raise ValueError("Input error. 'layer_specs' should be a list")
         
-        super(ConvDecoder, self).__init__()
+        super().__init__()
         
         # Decoder attributes
         self.layer_specs = layer_specs
@@ -633,9 +652,9 @@ class ConvDecoder(AutoencoderNetworkBuilder):
         
         # Hidden layers
         if on_transpose_conv:
-            self.add_transp_conv_layers(layer_specs)
+            self.add_transp_conv_blocks(layer_specs)
         else:
-            self.add_conv_layers(layer_specs)
+            self.add_conv_blocks(layer_specs)
     
     def forward(self, x):
         return self.layers(x)
@@ -651,7 +670,7 @@ class ConvAutoencoderImplicit(AutoencoderNetworkBuilder):
         on_transpose_conv=True,
         n_categories=0
     ):
-        super(ConvAutoencoderImplicit, self).__init__()
+        super().__init__()
         
         # Attributes
         self.input_length = input_length
@@ -687,7 +706,6 @@ class ConvAutoencoderImplicit(AutoencoderNetworkBuilder):
         return self.decoder(x)
 
     def get_encoder_output_length(self, input_shape):
-        from pyae.utils import get_decoder_target_lengths
         return get_decoder_target_lengths(self.encoder, input_shape)
 
 class ConvAutoencoderLatentFC1(AutoencoderNetworkBuilder):
@@ -702,7 +720,7 @@ class ConvAutoencoderLatentFC1(AutoencoderNetworkBuilder):
         n_categories=0,
         pad=0
     ):
-        super(ConvAutoencoderLatentFC1, self).__init__()
+        super().__init__()
         
         # Attributes
         self.input_length = input_length
@@ -744,79 +762,10 @@ class ConvAutoencoderLatentFC1(AutoencoderNetworkBuilder):
         return self.decoder(x)
 
     def get_encoder_output_length(self, input_shape):
-        from pyae.utils import get_decoder_target_lengths
         return get_decoder_target_lengths(self.encoder, input_shape)
-
-class VariationalLatent(AutoencoderNetworkBuilder):
-    """
-    VariationalBuilds a a custom neural network module designed to parameterize
-    the mean and log-variance of a latent space in a variational autoencoder (VAE).
-    """
-
-    def __init__(self, input_length, latent_length, layer_specifications):
-        """
-        Parameters:
-            input_length (int): The size of the input data.
-            latent_length (int): The size of the latent space.
-            layer_specifications (tuple): Specifications for the layers, including activation function,
-                                 bias, and whether batch normalization is applied.
-        """
-        super(VariationalLatent, self).__init__()
-
-        # Encoder attributes
-        self.last_input_length = input_length
-        self.layer_specifications = layer_specifications
-        self.layers = nn.Sequential()
-        
-        # Layers for parameters of a normal distribution N(mu, sigma)
-        activation, bias, on_batch_norm = layer_specifications
-        params = (latent_length, activation, bias, 0.0, on_batch_norm)
-        
-        # layer_mean, stored in self.layers[0]
-        self.add_fc_layer(params)
-        # layer_log_variance, stored in self.layers[1]
-        self.last_input_length = input_length
-        self.add_fc_layer(params)
-
-    def forward(self, x):
-        mean, log_var = self._forward_distribution_params(x)
-        z = self._sample_latent(mean, log_var)
-        return z, mean, log_var
-    
-    def _forward_distribution_params(self, x):
-        """
-        Computes the mean and log-variance of the latent space.
-
-        Args:
-            x (torch.Tensor): The input tensor.
-
-        Returns:
-            tuple: Tuple containing the mean and log-variance.
-        """
-        mean = self.layers[0](x)
-        log_var = self.layers[1](x)
-        return mean, log_var
-
-    def _sample_latent(self, mean, log_var):
-        """
-        Samples the latent variable from the parameterized distribution.
-
-        Args:
-            mean (torch.Tensor): Mean of the distribution.
-            log_var (torch.Tensor): Log-variance of the distribution.
-
-        Returns:
-            torch.Tensor: Sampled latent variable.
-        """
-        # sigma/std = exp { log (std ** 2) / 2 } -> exp { 2 * log (std) / 2 } -> var
-        std = torch.exp(log_var / 2)
-        eps = torch.rand_like(std)
-        z = mean + std + eps
-        return z
-
 class LatentFC1(AutoencoderNetworkBuilder):
     """
-    Builds a a custom neural network with only 1 fully-connected layer module representing 
+    Builds a a custom neural network with only 1 dense layer module representing 
     the latent space in an autoencoder.
     """
 
@@ -849,7 +798,7 @@ class LatentFC1(AutoencoderNetworkBuilder):
         self.layers = nn.Sequential()
         
         latent_specifications = [latent_length, *layer_specifications]
-        self.add_fc_layer(latent_specifications, on_flatten=True)
+        self.add_dense_block(latent_specifications, on_flatten=True)
     
     def forward(self, x):
         x = self.layers(x)
@@ -861,255 +810,6 @@ class LatentFC1(AutoencoderNetworkBuilder):
     
     def set_pad_to_outputs(self, inputs):
         return torch.nn.functional.pad(inputs, pad=(self.pad, self.pad), mode=self.mode)
-
-class LatentFC3(AutoencoderNetworkBuilder):
-    """
-    Builds a a custom neural network with only 3 fully-connected layer module representing 
-    the latent space in an autoencoder.
-    """
-
-    def __init__(self,
-                 input_length, 
-                 latent_length, 
-                 input_channel, 
-                 layer_specifications, 
-                 on_conv_ae=True, 
-                ):
-        """
-        Parameters:
-            input_length (int): The size of the input data.
-            latent_length (int): The size of the latent data.
-            input_channel (int): The number of input channels from the last encoder layer.
-            layer_specifications (list): Specifications for the layers, including activation function,
-                                bias, and whether batch normalization is applied.
-        """
-        super(LatentFC3, self).__init__()
-
-        # Encoder attributes
-        self.input_length = input_length
-        self.latent_length = latent_length
-        self.input_channel = input_channel
-        self.layer_specifications = layer_specifications
-        self.on_conv_ae = on_conv_ae
-        self.last_input_length = input_length
-        self.output_reshape = (-1, input_channel, input_length // input_channel)
-        self.layers = nn.Sequential()
-
-        
-        encoder_to_latent_specifications = [input_length, *layer_specifications]
-        latent_specifications = [latent_length, *layer_specifications]
-        latent_to_decoder_specifications = [input_length, *layer_specifications]
-
-        self.add_fc_layers([encoder_to_latent_specifications, 
-                            latent_specifications, 
-                            latent_to_decoder_specifications
-                           ],
-                           on_flatten_first=True
-                           )
-
-    def forward(self, x):
-        x = self.layers(x)
-        if self.on_conv_ae:
-            return x.view(self.output_reshape)  # Shape (batch, channel, length)
-        return x
-        
-class DCECLatentFC3(AutoencoderNetworkBuilder):
-    """
-    Builds a a custom neural network with only 3 fully-connected layer module representing 
-    the latent space in an autoencoder for Deep Convolutional Embedded Clustering (DCEC).
-    """
-
-    def __init__(self, input_length, input_channel, layer_specifications, on_conv_ae=True):
-        """
-        Parameters:
-            input_length (int): The size of the input data.
-            input_channel (int): The number of input channels from the last encoder layer.
-            layer_specifications (list): Specifications for the layers, including activation function,
-                                bias, and whether batch normalization is applied.
-        """
-        super(DCECLatentFC3, self).__init__()
-
-        # Encoder attributes
-        self.input_length = input_length
-        self.input_channel = input_channel
-        self.layer_specifications = layer_specifications
-        self.last_input_length = input_length
-        self.output_reshape = (-1, input_channel, input_length // input_channel)
-        self.layers = nn.Sequential()
-
-        self.on_conv_ae = on_conv_ae
-        
-        encoder_to_latent_specifications = [self.input_length, *layer_specifications[0]]
-        latent_specifications = layer_specifications[1]
-        latent_to_decoder_specifications = [self.input_length, *layer_specifications[-1]]
-
-        self.add_fc_layers([encoder_to_latent_specifications, 
-                            latent_specifications, 
-                            latent_to_decoder_specifications],
-                           on_flatten_first=True
-                          )
-
-    def forward(self, x):
-        # Compute on input layer
-        x = self.layers[0](x)
-        # Compute on latent layer
-        z = self.layers[1](x)
-        # Compute on output layer
-        x = self.layers[2](z)
-        
-        if self.on_conv_ae:
-            return x.view(self.output_reshape), z  # Shape (batch, channel, length)
-        return x, z
-        
-class EnsembleLatentFC3(AutoencoderNetworkBuilder):
-    """
-    Builds a a custom neural network with only 3 fully-connected layer module representing 
-    the latent space in an autoencoder.
-    """
-
-    def __init__(self, latent_length, input_lengths, layer_specifications, increment_output_units=2, on_conv_ae=True):
-        """
-        Parameters:
-            latent_length (int): The sizes of the input data.
-            input_lengths (int): The sizes of the input data.
-            layer_specifications (list): Specifications for the layers, including activation function,
-                                bias, and whether batch normalization is applied.
-            on_conv_ae (bool)
-        """
-        super(EnsembleLatentFC3, self).__init__()
-        
-        # Encoder attributes
-        self.input_lengths = input_lengths
-        self.increment_output_units = increment_output_units
-        self.layer_specifications = layer_specifications
-        self.latent_length = latent_length
-        self.concat_length = len(input_lengths) * latent_length
-        # Deleted to use latent layer as output
-        #self.output_reshape = (-1, 1, len(input_lengths) * latent_length)
-        self.output_reshape = (-1, 1, latent_length)
-        self.layers = nn.Sequential()
-
-        self.on_conv_ae = on_conv_ae
-        
-        # Encoders to concatenation block
-        on_flatten_first = True
-        for input_length in self.input_lengths:
-            self.last_input_length = input_length
-
-            # Deleted to use latent layer as output
-            #encoder_to_concat_specifications = [self.latent_length, *layer_specifications[0]]
-            encoder_to_concat_specifications = [self.latent_length, *layer_specifications]
-            self.add_fc_layer(encoder_to_concat_specifications, on_flatten=True)
-        
-            if on_flatten_first:
-                on_flatten_first = False
-
-        self.last_input_length = self.concat_length
-        # Concatenation to latent block
-        # Deleted to use latent layer as output
-        #concat_to_latent_specifications = [self.concat_length, *layer_specifications[1]]
-        concat_to_latent_specifications = [self.concat_length, *layer_specifications]
-        self.add_fc_layer(concat_to_latent_specifications)
-        
-        # pre-latent to latent block
-        # Deleted to use latent layer as output
-        #prelatent_to_latent_specifications = [self.latent_length, *layer_specifications[2]]
-        #prelatent_to_latent_specifications = [self.latent_length, *layer_specifications]
-        self.add_fc_layer(concat_to_latent_specifications)
-        
-        # Latent blocks
-        # Deleted to use latent layer as output
-        #latent_specifications = layer_specifications[3]
-        latent_specifications = [latent_length, *layer_specifications]
-        self.add_fc_layer(latent_specifications)
-        
-        # latent to decoder block
-        #latent_to_decoder_specifications = [increment_output_units * self.latent_length, *layer_specifications[3]]
-        latent_to_decoder_output_length = self.concat_length
-        # Deleted to use latent layer as output
-        #latent_to_decoder_specifications = [latent_to_decoder_output_length, *layer_specifications[4]]
-        latent_to_decoder_specifications = [latent_to_decoder_output_length, *layer_specifications]
-        self.add_fc_layer(latent_to_decoder_specifications)
-
-    def forward(self, xs):
-        concat_inputs = []
-        # Compute on encoder to concat
-        for i, x in enumerate(xs):
-            x_encoder = self.layers[i](x)
-            #print(x.shape, x_encoder.shape)
-            concat_inputs.append(x_encoder)
-        
-        # Concatenate along the feature dimension (dim=1)
-        concatenated_latent = torch.cat(concat_inputs, dim=1)
-        #print(f"concat: {concatenated_latent.shape}")
-        # Compute on prelatent to latent
-        x = self.layers[-4](concatenated_latent)
-        # Compute on concat to latent
-        x = self.layers[-3](x)
-        # Compute on latent
-        x = self.layers[-2](x)
-        # Compute on latent to decoder
-        #x = self.layers[-1](x)
-        
-        return x.view(self.output_reshape)  # Shape (batch, channel, length)
-
-class ClusteringLayer(AutoencoderNetworkBuilder):
-    """
-    ClusteringLayer is a custom neural network module representing the clustering centers branch
-    from the autoencoder latent layer.
-    """
-
-    def __init__(self, n_clusters, features_length, pretrain_cluster_weights=None):
-        """
-        Parameters:
-            n_clusters (int): The number of clusters.
-            features_length (int): The size of the latent data.
-            pretrain_cluster_weights ()
-        """
-        super(ClusteringLayer, self).__init__()
-        
-        # Encoder attributes
-        self.features_length = features_length
-        self.n_clusters = n_clusters
-        # Pretrain weights
-        self.pretrain_cluster_weights = pretrain_cluster_weights
-        self.layers = nn.Sequential()
-
-        # Initialize clustering weights
-        self.initialize_weights(pretrain_cluster_weights)
-
-    def forward(self, z):
-        return self._t_distribution(z)
-
-    def _t_distribution(self, z, dim_norm=2):
-        """
-        Computes a soft labels on z by Student's T-distribution.
-        """
-        # Reshape z to add centers dimension (batch, 1, features) to broadcast
-        z_expanded = z.unsqueeze(1)
-        
-        # Reshape z to add batch dimension (1, centers, features) to broadcast
-        centers_expanded = self.cluster_weights.unsqueeze(0)
-        
-        # Compute MSE loss from shape (batch, centers, features) to (batch, centers)
-        mse_loss = torch.sqrt(
-            torch.sum(
-                (z_expanded - centers_expanded) ** 2, 
-                dim=dim_norm
-            )
-        )
-        # Apply the Student's t-distribution
-        q_unnorm = 1.0 / (1.0 + mse_loss)
-        # Normalize the distribution
-        q = q_unnorm / q_unnorm.sum(dim=1).unsqueeze(1)
-        return q
-
-    def initialize_weights(self, weights=None):
-        if weights is None:
-            self.cluster_weights = nn.Parameter(torch.empty(self.n_clusters, self.features_length), requires_grad=True)
-            nn.init.xavier_uniform_(self.cluster_weights) # Xavier initialization
-        else:
-            self.cluster_weights = nn.Parameter(weights, requires_grad=True)
 
 class InceptionBlock1D(nn.Module):
     def __init__(self, in_channels, out_channels, branch_channels=64):

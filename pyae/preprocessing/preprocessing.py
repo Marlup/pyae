@@ -25,6 +25,16 @@ def normalize(x: np.ndarray, axis: int = -1, method: Optional[str] = None):
     return x
 
 def make_target_from_load(data: np.ndarray, squeeze=True):
+    """
+    Computes a target of integer labels from data Ndarray.
+
+    Parameters:
+        - data (ndarray, (load, sample, sensor, split, step)): Number of loads in the dataset.
+        
+    Returns:
+        1D ndarray.
+    """
+        
     n_loads, n_samples, n_sensors, n_splits, _ = data.shape
     n = n_samples * n_sensors * n_splits
     target = np.repeat(np.arange(n_loads), repeats=n)
