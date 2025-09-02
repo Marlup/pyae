@@ -7,7 +7,7 @@ torch
 openpyxl
 numpy
 h5py
-xarray[complete]
+xarray
 ipython
 kaleido
 netcdf4

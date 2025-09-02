@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Union
 from torch import Tensor
-from .base import EMIDatasetBase
-from .types import EMISample
+from pyae.dataset.base import EMIDatasetBase
+from pyae.dataset.types import EMISample
 
 class EMIDatasetClassifier(EMIDatasetBase):
     def __init__(

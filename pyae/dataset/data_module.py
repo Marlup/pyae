@@ -2,7 +2,14 @@
 
 import torch
 from torch.utils.data import DataLoader
-from pyae.data import EMIDatasetClassifier
+from pyae.dataset import EMIDatasetClassifier
+
+
+# Public package API
+__all__ = (
+    "DataModule",
+)
+
 
 
 class DataModule:

@@ -1,3 +1,9 @@
+# Public package API
+__all__ = (
+    "EarlyStopper",
+)
+
+
 class EarlyStopper():
     def __init__(self, tol=1e-4, max_no_improvements=5):
         self.tol = tol

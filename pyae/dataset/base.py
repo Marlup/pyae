@@ -3,6 +3,13 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
+
+# Public package API
+__all__ = (
+    "EMIDatasetBase",
+)
+
+
 class EMIDatasetBase(Dataset):
     def __init__(
         self,

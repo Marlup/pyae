@@ -1,8 +1,14 @@
 # training_config.py
 
+import torch
 from dataclasses import dataclass
 from typing import Dict
-import torch
+
+
+# Public package API
+__all__ = (
+    "TrainingConfig"
+)
 
 
 @dataclass

@@ -1,6 +1,5 @@
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import torch
-import numpy as np
 import matplotlib.pyplot as plt
 
 from torchmetrics import(

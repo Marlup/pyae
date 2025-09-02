@@ -4,7 +4,8 @@ import torch.nn.functional as F
 from dataclasses import dataclass
 from typing import Optional, List, Tuple, Union
 
-from utils.miscellaneous import get_decoder_target_lengths
+from pyae.utils.miscellaneous import get_decoder_target_lengths
+
 
 ##################################
 #### NN architecture modeling ####
@@ -312,7 +313,6 @@ class AutoencoderNetworkBuilder(nn.Module):
         self.encoder.requires_grad_(next_requires_grad)
         self.latent.requires_grad_(next_requires_grad)
         self.decoder.requires_grad_(next_requires_grad)
-
 class CategoricalEncoder(AutoencoderNetworkBuilder):
     """
     CategoricalEncoder is a custom neural network module designed to encode categorical variables
@@ -347,8 +347,6 @@ class CategoricalEncoder(AutoencoderNetworkBuilder):
         if self.is_conv:
             return x.unsqueeze(1)
         return x
-
-
 @dataclass
 class FCLayerConfig:
     units: int
@@ -356,8 +354,6 @@ class FCLayerConfig:
     bias: bool = True
     dropout: float = 0.0
     batch_norm: bool = False
-
-
 @dataclass
 class Conv1DLayerConfig:
     out_channels: int
@@ -369,14 +365,11 @@ class Conv1DLayerConfig:
     bias: bool = True
     dropout: float = 0.0
     batch_norm: bool = False
-
 @dataclass
 class Upsample1DLayerConfig:
     scale_factor: int
     mode: str = "linear"
     align_corners: bool = True
-
-
 @dataclass
 class TransposedConv1DLayerConfig:
     out_channels: int
@@ -388,8 +381,6 @@ class TransposedConv1DLayerConfig:
     bias: bool = True
     dropout: float = 0.0
     batch_norm: bool = False
-
-
 class LayerFactory:
     @staticmethod
     def activation(name: str, alpha: float = 0.25) -> nn.Module:
@@ -458,9 +449,6 @@ class LayerFactory:
         if cfg.scale_factor is None and cfg.size is None:
             raise ValueError("Upsample1DLayerConfig must specify either scale_factor or size.")
         return nn.Upsample(scale_factor=cfg.scale_factor, size=cfg.size, mode=cfg.mode, align_corners=cfg.align_corners)
-
-
-
 class NetworkBuilder(nn.Module):
     def __init__(self):
         super().__init__()
@@ -525,8 +513,6 @@ class NetworkBuilder(nn.Module):
     def show_parameters(self):
         for i, p in enumerate(self.parameters()):
             print(f"Param {i}: shape={tuple(p.shape)}, requires_grad={p.requires_grad}")
-
-
 class DenseEncoder(AutoencoderNetworkBuilder):
     """
     DenseEncoder is a custom neural network module designed to encode input data
@@ -558,39 +544,6 @@ class DenseEncoder(AutoencoderNetworkBuilder):
 
     def forward(self, x):
         return self.layers(x)
-
-class DenseDecoder(AutoencoderNetworkBuilder):
-    """
-    DenseDecoder is a custom neural network module designed to decode input data
-    through dense layers with customizable specifications.
-    """
-
-    def __init__(self, input_length: int, layer_specifications: list, **kwargs):
-        """
-        Parameters:
-            input_length (int): The number of input features.
-            layer_specifications (list): List of tuples defining the layers. Each tuple contains specifications for a layer,
-                                including units, activation function, bias, dropout probability, and batch normalization.
-            **kwargs: Additional keyword arguments.
-        """
-        if not isinstance(layer_specifications, list):
-            raise Exception("Input error. 'layer_specifications' should be a list of tuples")
-        if len(layer_specifications) < 1:
-            raise Exception("Input error. 'layer_specifications' length is 0")
-        
-        super().__init__()
-        
-        self.input_length = input_length
-        self.last_input_length = input_length
-        self.layer_specifications = layer_specifications
-        self.layers = nn.Sequential()
-        
-        # Hidden layer
-        self.add_dense_blocks(layer_specifications)
-        
-    def forward(self, x):
-        return self.layers(x)
-
 class ConvEncoder(AutoencoderNetworkBuilder):
     """
     ConvEncoder is a custom neural network module designed to encode input data
@@ -629,7 +582,6 @@ class ConvEncoder(AutoencoderNetworkBuilder):
     
     def forward(self, x):
         return self.layers(x)
-
 class ConvDecoder(AutoencoderNetworkBuilder):
     """
     Convolutional Decoder module.
@@ -658,7 +610,6 @@ class ConvDecoder(AutoencoderNetworkBuilder):
     
     def forward(self, x):
         return self.layers(x)
-
 class ConvAutoencoderImplicit(AutoencoderNetworkBuilder):
     def __init__(
         self, 
@@ -707,7 +658,6 @@ class ConvAutoencoderImplicit(AutoencoderNetworkBuilder):
 
     def get_encoder_output_length(self, input_shape):
         return get_decoder_target_lengths(self.encoder, input_shape)
-
 class ConvAutoencoderLatentFC1(AutoencoderNetworkBuilder):
     def __init__(
         self, 
@@ -810,7 +760,6 @@ class LatentFC1(AutoencoderNetworkBuilder):
     
     def set_pad_to_outputs(self, inputs):
         return torch.nn.functional.pad(inputs, pad=(self.pad, self.pad), mode=self.mode)
-
 class InceptionBlock1D(nn.Module):
     def __init__(self, in_channels, out_channels, branch_channels=64):
         super(InceptionBlock1D, self).__init__()
@@ -868,7 +817,6 @@ class InceptionBlock1D(nn.Module):
         # Concatenate branches along the channel axis (dimension 1)
         output = torch.cat([branch1x1, branch3x3, branch5x5, branch7x7, branch_pool], dim=1)
         return output
-
 class InceptionBlock1DWithUpsampling(nn.Module):
     def __init__(self, in_channels, out_channels, branch_channels=64, upsample_scale=2, size=None):
         super(InceptionBlock1DWithUpsampling, self).__init__()
@@ -945,7 +893,6 @@ class InceptionBlock1DWithUpsampling(nn.Module):
         # Apply upsampling to the concatenated output
         output = self.upsample(output)
         return output
-
 # Example Encoder-Decoder structure
 class InceptionAutoencoder1D(nn.Module):
     def __init__(self, units, output_size):
@@ -975,7 +922,6 @@ class InceptionAutoencoder1D(nn.Module):
         encoded = self.encoder(x)
         decoded = self.decoder(encoded)
         return self.channel_adapter(decoded)
-
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super(ResidualBlock, self).__init__()

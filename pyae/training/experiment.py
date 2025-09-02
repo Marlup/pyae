@@ -5,13 +5,16 @@ import torch
 from torch import nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
-from torchmetrics import MAE, MAPE
+from torchmetrics import MeanAbsoluteError, MeanAbsolutePercentageError
 import matplotlib.pyplot as plt
 from yaml import safe_load as load
 
-from evaluation import plot_reconstruction
-from utils.plotting import plot_losses
+from pyae.evaluation import plot_reconstruction
+from pyae.utils.plotting import plot_losses
 from pyae.training.managers import TrainingManager
+
+
+__all__ = ["run_experiment"]
 
 
 def run_experiment(
@@ -43,9 +46,9 @@ def run_experiment(
     if criterion == "mse":
         criterion = nn.MSELoss()
     elif criterion == "mae":
-        criterion = MAE()
+        criterion = MeanAbsoluteError()
     elif criterion == "mape":
-        criterion = MAPE()
+        criterion = MeanAbsolutePercentageError()
 
     # Load specs
     with open(path_experiment_specs, "r") as file:
