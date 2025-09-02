@@ -3,11 +3,18 @@
 from dataclasses import dataclass
 from torch.optim import Optimizer, Adam
 from torch.optim.lr_scheduler import StepLR, _LRScheduler
-from pyae.early_stopper import EarlyStopper
 from torch.utils.data import DataLoader
 from typing import Callable, Optional
 
-from training_config import TrainingConfig
+from pyae.early_stopper import EarlyStopper
+from pyae.training.training_config import TrainingConfig
+
+
+# Public package API
+__all__ = (
+    "TrainingEnvironment",
+)
+
 
 @dataclass
 class TrainingEnvironment:

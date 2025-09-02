@@ -4,6 +4,12 @@ from h5py import File as File_hdf
 import torch
 
 
+__all__ = (
+    "ModelLoader",
+    "HDF5Handler"
+)
+
+
 class ModelLoader():
     """
     A helper class to load PyTorch models and state dictionaries.
@@ -46,3 +52,4 @@ class HDF5Handler():
             raise ValueError("'path' and 'dataset_name' must be provided.")
         with File_hdf(path, "r") as f:
             return np.array(f[dataset_name])
+

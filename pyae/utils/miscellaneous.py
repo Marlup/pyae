@@ -5,6 +5,7 @@ import torch
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
+
 def get_decoder_params(encoder_model, 
                        latent_output_length, 
                        input_shape, 

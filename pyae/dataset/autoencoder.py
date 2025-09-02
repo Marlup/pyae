@@ -1,8 +1,14 @@
 from typing import Optional, Dict, Union
-import torch
 from torch import Tensor
-from .base import EMIDatasetBase
-from .types import EMISample
+from pyae.dataset.base import EMIDatasetBase
+from pyae.dataset.types import EMISample
+
+
+# Public package API
+__all__ = (
+    "EMIDataset",
+)
+
 
 class EMIDataset(EMIDatasetBase):
     def __init__(

@@ -8,7 +8,10 @@ import pandas as pd
 from pandas import DataFrame, MultiIndex
 from openpyxl import load_workbook, Workbook
 
-from preprocessing.preprocessing import generate_noisy_signals, generate_synthetic_signal, min_max_scale, max_scale
+from pyae.preprocessing.preprocessing import generate_noisy_signals, generate_synthetic_signal, min_max_scale, max_scale
+
+
+__all__ = ["EMIDataReader"]
 
 
 class EMIDataReader():
@@ -275,3 +278,4 @@ class EMIDataReader():
         if stack_ranges:
             return np.vstack(stack)
         return np.array(stack)
+

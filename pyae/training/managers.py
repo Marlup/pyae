@@ -9,23 +9,21 @@ from sklearn.model_selection import StratifiedKFold
 from IPython.display import clear_output
 
 # Local modules
-from utils.decorators import results_training_epoch, results_evaluation_epoch
-from utils.miscellaneous import get_timestamp
-from training_config import TrainingConfig
-from training_environment import TrainingEnvironment
-
+from pyae.utils.decorators import results_training_epoch, results_evaluation_epoch
+from pyae.utils.miscellaneous import get_timestamp
+from pyae.training.training_config import TrainingConfig
+from pyae.training.training_environment import TrainingEnvironment
 
 ################## 
 #### Training ####
 ##################
 
-# ---- KFoldManager ----
 
-# kfold_manager.py
-
-from sklearn.model_selection import StratifiedKFold
-from copy import deepcopy
-import torch
+# Public package API
+__all__ = (
+    "TrainingManager", 
+    "KFoldManager",
+)
 
 
 class KFoldManager:

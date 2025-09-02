@@ -6,6 +6,20 @@ from torch.nn.modules.loss import _Loss
 import torch.nn.functional as F
 
 
+# Public package API
+__all__ = (
+    "quantile_loss",
+    "kl_divergence",
+    "mse_hybrid_reduction",
+    "vae_hybrid_loss",
+    "AreaBetweenCurvesLoss",
+    "VariationalLoss",
+    "DCECLoss",
+    "QuantileLoss",
+    "FactorVAELoss",
+    "FactorVAEDiscriminatorLoss"
+)
+
 def quantile_loss(outputs, target, quantile):
     """
     Compute quantile regression loss.
