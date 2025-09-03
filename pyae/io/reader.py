@@ -8,7 +8,11 @@ import pandas as pd
 from pandas import DataFrame, MultiIndex
 from openpyxl import load_workbook, Workbook
 
-from pyae.preprocessing.preprocessing import generate_noisy_signals, generate_synthetic_signal, min_max_scale, max_scale
+from pyae.preprocessing.preprocessing import (
+    generate_noisy_signals,
+    min_max_scale,
+    max_scale
+)
 
 
 __all__ = ["EMIDataReader"]
@@ -40,7 +44,7 @@ class EMIDataReader():
         self.version_sep = version_sep
         self.file_format = file_format
 
-    def read_all(self, stack_ranges: bool = True, n_features: int = 3) -> np.ndarray:
+    def read_all(self, stack_ranges: bool = True, n_features: int = 3, step_dim_last=True) -> np.ndarray:
         """
         Reads all EMI Excel files in the directory and returns a stacked NumPy array.
 
@@ -61,14 +65,18 @@ class EMIDataReader():
             data = self._read_sheet(file_path, n_features=n_features, stack_ranges=stack_ranges)
             dataset.append(data)
 
-        return np.array(dataset)
+        if step_dim_last and not stack_ranges:
+            return np.array(dataset).transpose([0, 1, 2, 3, 5, 4])
+
+        if step_dim_last:
+            return np.array(dataset).transpose([0, 1, 2, 4, 3])
 
     def to_dataframe(
             self,
             stack_ranges: bool = True,
             column_names: Optional[List[str]] = None,
             index_names: Optional[List[str]] = None,
-            n_features: int = 3
+            n_features: int = 3,
             ) -> DataFrame:
         """
         Reads EMI data and returns a pandas DataFrame with MultiIndex.
@@ -86,6 +94,7 @@ class EMIDataReader():
             column_names = ["frequency", "real", "imag"]
 
         data = self.read_all(stack_ranges=stack_ranges, n_features=n_features)
+        print(data.shape)
 
         if stack_ranges:
             n_loads, n_sweeps, n_sensors, n_steps, n_vars = data.shape
@@ -102,14 +111,12 @@ class EMIDataReader():
             columns=column_names
         )
     
-    def build_ndarray(self, df: pd.DataFrame, values: List[int], dim: int, **kwargs):
+    def build_ndarray_from_df(self, df: pd.DataFrame, **kwargs):
         """
         Processes EMI DataFrame signals into structured NumPy arrays with optional augmentations.
 
         Args:
             df (DataFrame): A validated EMI DataFrame.
-            values (List[int]): Indices of the values to select from the signal features.
-            dim (int): Axis along which to apply value selection.
             **kwargs: Parameters forwarded to `_build_ndarray_logic`, such as:
                 - clip_to_positive (bool)
                 - n_splits (int)
@@ -127,80 +134,88 @@ class EMIDataReader():
             if level not in df.index.names:
                 raise ValueError(f"Missing required index level: '{level}'")
 
-        expected_columns = {"frequency", "real", "imag"}
-        if not expected_columns.issubset(df.columns):
-            raise ValueError(f"Missing required columns: {expected_columns - set(df.columns)}")
+        #expected_columns = {"frequency", "real", "imag"}
+        #if not expected_columns.issubset(df.columns):
+        #    raise ValueError(f"Missing required columns: {expected_columns - set(df.columns)}")
 
         x = df.values.reshape(*[len(df.index.levels[i]) for i in range(df.index.nlevels)], -1)
 
-        return self._build_ndarray_impl(x, values, dim, **kwargs)
+        return self._build_ndarray_impl(x, **kwargs)
+    
+    def build_ndarray(self, x: np.ndarray, **kwargs):
+        """
+        Processes EMI array signals into structured NumPy arrays with optional augmentations.
+
+        Args:
+            x (ndarray): A validated EMI array.
+            **kwargs: Parameters forwarded to `_build_ndarray_logic`, such as:
+                - clip_to_positive (bool)
+                - n_splits (int)
+                - add_noise_augmentation (bool)
+                - add_minmax_augmentation (bool)
+                - normalization_mode (str)
+                - on_load_target (bool)
+                - on_ids (bool)
+
+        Returns:
+            np.ndarray or tuple: Augmented array and optionally targets/IDs.
+        """
+        return self._build_ndarray_impl(x, **kwargs)
 
     def _build_ndarray_impl(
         self,
         x,
-        values,
-        dim,
         clip_to_positive=True,
         n_splits=1,
         add_noise_augmentation=False,
-        add_minmax_augmentation=False,
-        probabilities_to_positive=None,
         normalization_mode="minmax",
+        axis_norm=-1,
         by_load_value=0,
-        axis_min_max=-1,
-        on_ids=False,
+        is_step_dim_last=False
     ):
-        axis_max = axis_min_max
         if n_splits < 1:
-            n_splits = 1
+            raise Exception(
+                f"n_splits must be greater than 1,\current is {n_splits}")
+
+        if is_step_dim_last:
+            axis_norm = -1
+            *_, n_steps = x.shape
+        else:
+            n_steps = x.shape[axis_norm]
 
         if clip_to_positive:
             x = x.clip(0.0, None)
 
-        x = np.take(x, values, dim)
-        *_, n_steps = x.shape
-
-        augmentations = []
-
-        if add_minmax_augmentation:
-            print(f"\nRunning min-max augmentation, probs {probabilities_to_positive}:")
-            print("\tShape of input data", x.shape)
-            x_minmax_aug = generate_synthetic_signal(x, probabilities_to_positive)
-            augmentations.append(x_minmax_aug)
-            print("\tShape of output data:", x_minmax_aug.shape)
+        print("before-add_minmax_augmentation", x.shape)
 
         if add_noise_augmentation:
             print("\nRunning noise augmentation:")
             print("\tShape of input data:", x.shape)
             x_noise_aug = generate_noisy_signals(x)
-            print("\tShape of output data:", x_noise_aug.shape)
-            augmentations.append(x_noise_aug)
+            augmented_x = np.hstack([x, x_noise_aug])
+        else:
+            augmented_x = x
 
-        augmented_x = np.hstack([x, *augmentations])
-
+        print("before-normalization_mode 1", augmented_x.shape)
         if normalization_mode == "minmax":
-            augmented_x = min_max_scale(augmented_x, axis=axis_min_max, by_load_value=by_load_value)
+            augmented_x = min_max_scale(augmented_x, axis=axis_norm, by_load_value=by_load_value)
         elif normalization_mode == "max":
-            augmented_x = max_scale(augmented_x, axis=axis_max, by_load_value=by_load_value)
+            augmented_x = max_scale(augmented_x, axis=axis_norm, by_load_value=by_load_value)
 
+        print("before-normalization_mode", augmented_x.shape)
         new_n_steps = n_steps // n_splits
         *other_dims, _ = augmented_x.shape
         augmented_x = augmented_x.reshape(*other_dims, n_splits, new_n_steps)
 
+        print("before - normalization_mode 2", augmented_x.shape)
         if normalization_mode == "minmax":
-            augmented_x = min_max_scale(augmented_x, axis=axis_min_max)
+            augmented_x = min_max_scale(augmented_x, axis=axis_norm)
         elif normalization_mode == "max":
-            augmented_x = max_scale(augmented_x, axis=axis_max)
-
-        if on_ids:
-            ids = self.make_signal_ids(augmented_x)
+            augmented_x = max_scale(augmented_x, axis=axis_norm)
 
         print("\nShape of the augmented data:", augmented_x.shape)
 
-        if on_ids:
-            return augmented_x, ids
-        else:
-            return augmented_x
+        return augmented_x
 
     def _validate_dataframe(self, df: pd.DataFrame):
         """
@@ -228,7 +243,7 @@ class EMIDataReader():
         Returns:
             2D Tensor (ndarray) of categories. Each row.
         """
-        
+        print(data.shape)
         n_loads, n_sweeps, n_sensors, n_splits, n_steps = data.shape
         load_vector = np.arange(n_loads)
         sweep_vector = np.arange(n_sweeps)

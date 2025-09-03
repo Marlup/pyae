@@ -6,7 +6,7 @@ from torch.optim.lr_scheduler import StepLR, _LRScheduler
 from torch.utils.data import DataLoader
 from typing import Callable, Optional
 
-from pyae.early_stopper import EarlyStopper
+from pyae.training.early_stopper import EarlyStopper
 from pyae.training.training_config import TrainingConfig
 
 
@@ -28,8 +28,19 @@ class TrainingEnvironment:
     DEFAULT_OPTIMIZER: Optimizer = Adam
 
     @classmethod
-    def from_model_and_config(cls, model, loss_fn, train_dataset, eval_dataset, config: TrainingConfig):
-        optimizer = cls.DEFAULT_OPTIMIZER(model.parameters(), lr=config.adaptive_lr_config["initial_lr"], weight_decay=config.weight_decay)
+    def from_model_and_config(
+        cls, 
+        model, 
+        loss_fn, 
+        train_dataset,
+        eval_dataset,
+        config: TrainingConfig
+        ):
+        optimizer = cls.DEFAULT_OPTIMIZER(
+            model.parameters(), 
+            lr=config.adaptive_lr_config["initial_lr"],
+            weight_decay=config.weight_decay
+        )
 
         scheduler = StepLR(
             optimizer,

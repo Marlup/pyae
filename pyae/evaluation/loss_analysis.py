@@ -1,13 +1,18 @@
 import torch
+from pyae.architecture.forward import compute_forward_loss
 
 class LossAnalyzer():
-    def __init__(self, model):
+    def __init__(self, model, mode="standard"):
         self.model = model
+        self.mode = mode
 
     def compute(self, dataloader, loss_func, on_vae=False):
         self.model.eval()
         losses = [
-            self.model._compute_forward_loss(batch, loss_func=loss_func).item()
+            compute_forward_loss(self.model,
+                                 batch,
+                                 loss_func,
+                                 mode=self.mode)[0].item()
             for batch in dataloader
         ]
         return torch.tensor(losses)

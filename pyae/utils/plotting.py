@@ -1,11 +1,14 @@
 import matplotlib.pyplot as plt
 from pyae.utils.miscellaneous import get_exp_adaptive_learning
+from pyae.architecture.forward import compute_forward_loss
 
 
 class ReconstructionPlotter:
-    def __init__(self, model, dataloader):
+    def __init__(self, model, criterion, dataloader, mode):
         self.model = model
+        self.criterion = criterion
         self.dataloader = dataloader
+        self.mode = mode
 
     def plot_basic_reconstructions(self, n=20, cols=4, suptitle="Reconstruction of signals"):
         self.model.eval()
@@ -17,9 +20,12 @@ class ReconstructionPlotter:
             if i >= n:
                 break
 
-            deviation, recon = self.model._compute_forward_loss(batch, return_outputs=True)
+            deviation, recon = compute_forward_loss(self.model, batch, self.criterion, self.mode)
+            deviation = deviation.detach().squeeze().cpu().numpy()
+            recon = recon.detach().squeeze().cpu().numpy()
+            
             axes[i].plot(batch["y"].squeeze().cpu(), label="Original")
-            axes[i].plot(recon.squeeze().cpu(), label="Predicted")
+            axes[i].plot(recon, label="Predicted")
             axes[i].set_title(f"Loss: {deviation.item():.4f}")
             axes[i].legend()
 
@@ -36,7 +42,7 @@ class ReconstructionPlotter:
             if i >= n:
                 break
 
-            loss, recon = self.model._compute_forward_loss(batch, return_outputs=True)
+            loss, recon = compute_forward_loss(self.model, batch, self.criterion, self.mode)
             low = model_lower(batch["x"]).squeeze().cpu()
             up = model_upper(batch["x"]).squeeze().cpu()
             y = batch["y"].squeeze().cpu()

@@ -8,6 +8,11 @@ from torch import nn
 from sklearn.model_selection import StratifiedKFold
 from IPython.display import clear_output
 
+from torch.optim import Optimizer, Adam
+from torch.optim.lr_scheduler import StepLR, _LRScheduler
+from torch.utils.data import DataLoader
+from typing import Callable, Optional
+
 # Local modules
 from pyae.utils.decorators import results_training_epoch, results_evaluation_epoch
 from pyae.utils.miscellaneous import get_timestamp
@@ -138,6 +143,9 @@ class TrainingManager:
 
         self.train_losses = []
         self.eval_losses = []
+
+    def _get_optimizer_from_env(self) -> Optimizer:
+        return self.env.optimizer
 
     def train_model(self):
         for epoch in range(self.config.epochs):

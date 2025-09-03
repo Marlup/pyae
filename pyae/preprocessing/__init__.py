@@ -5,7 +5,6 @@ from .preprocessing import (
     split_with_overlap,
     apply_augmentations,
     generate_noisy_signals,
-    generate_synthetic_signal,
     min_max_scale,
     max_scale
 )
@@ -19,7 +18,6 @@ __all__ = (
     "split_with_overlap",
     "apply_augmentations",
     "generate_noisy_signals",
-    "generate_synthetic_signal",
     "min_max_scale",
     "max_scale"
 )
